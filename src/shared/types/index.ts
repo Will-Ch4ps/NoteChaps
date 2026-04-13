@@ -111,13 +111,6 @@ export interface ElectronAPI {
   getVersion: () => Promise<string>
   setTitleBarOverlay?: (options: { color: string; symbolColor: string }) => Promise<void>
 
-  // Claude AI
-  claudeSend: (message: string, context?: string) => Promise<{ ok?: boolean; error?: string }>
-  claudeAbort: () => Promise<void>
-  onClaudeChunk: (cb: (text: string) => void) => () => void
-  onClaudeError: (cb: (msg: string) => void) => () => void
-  onClaudeDone: (cb: (code: number | null) => void) => () => void
-
   // Listeners (Main → Renderer)
   onFileChanged: (callback: (filePath: string) => void) => void
   onMenuAction: (action: string, callback: () => void) => void

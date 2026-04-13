@@ -40,26 +40,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setTitleBarOverlay: (options: { color: string; symbolColor: string }) =>
     ipcRenderer.invoke('app:setTitleBarOverlay', options),
 
-  // Claude AI
-  claudeSend: (message: string, context?: string) =>
-    ipcRenderer.invoke('claude:send', message, context),
-  claudeAbort: () => ipcRenderer.invoke('claude:abort'),
-  onClaudeChunk: (cb: (text: string) => void) => {
-    const handler = (_: unknown, text: string) => cb(text)
-    ipcRenderer.on('claude:chunk', handler)
-    return () => ipcRenderer.removeListener('claude:chunk', handler)
-  },
-  onClaudeError: (cb: (msg: string) => void) => {
-    const handler = (_: unknown, msg: string) => cb(msg)
-    ipcRenderer.on('claude:error', handler)
-    return () => ipcRenderer.removeListener('claude:error', handler)
-  },
-  onClaudeDone: (cb: (code: number | null) => void) => {
-    const handler = (_: unknown, code: number | null) => cb(code)
-    ipcRenderer.on('claude:done', handler)
-    return () => ipcRenderer.removeListener('claude:done', handler)
-  },
-
   // Listeners (Main → Renderer)
   onFileChanged: (callback: (filePath: string) => void) => {
     ipcRenderer.on('fs:fileChanged', (_event, filePath) => callback(filePath))

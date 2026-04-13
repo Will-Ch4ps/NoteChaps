@@ -1,7 +1,6 @@
 import { app, BrowserWindow, session } from 'electron'
 import { WindowManager } from './windowManager'
 import { setupFileSystemHandlers } from './fileSystem'
-import { setupClaudeHandlers } from './claudeHandler'
 import { buildMenu } from './menuBuilder'
 
 function main(): void {
@@ -16,7 +15,6 @@ function main(): void {
     const mainWindow = windowManager.createMainWindow()
 
     setupFileSystemHandlers()
-    setupClaudeHandlers()
     buildMenu(mainWindow)
 
     app.on('activate', () => {

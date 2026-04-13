@@ -3,9 +3,7 @@ import { useEditorStore } from '../../store/editorStore'
 import { PropertiesPanel } from './sidebar/PropertiesPanel'
 import { DiagramPanel } from './sidebar/diagram/DiagramPanel'
 import { TablePanel } from './sidebar/table/TablePanel'
-import { ClaudePanel } from './sidebar/ClaudePanel'
-
-type ActiveTab = 'properties' | 'diagram' | 'table' | 'claude'
+type ActiveTab = 'properties' | 'diagram' | 'table'
 
 const MIN_WIDTH = 260
 const MAX_WIDTH = 600
@@ -72,15 +70,11 @@ export function SidebarRight() {
             ● Diagrama
           </TabBtn>
         )}
-        <TabBtn active={tab === 'claude'} onClick={() => setTab('claude')}>
-          Claude
-        </TabBtn>
       </div>
 
       {tab === 'properties' && <PropertiesPanel />}
       {tab === 'table'      && <TablePanel />}
       {tab === 'diagram'    && <DiagramPanel />}
-      {tab === 'claude'     && <ClaudePanel />}
     </div>
   )
 }
