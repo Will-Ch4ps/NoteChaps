@@ -110,6 +110,8 @@ export interface ElectronAPI {
   // App
   getVersion: () => Promise<string>
   setTitleBarOverlay?: (options: { color: string; symbolColor: string }) => Promise<void>
+  getPendingFile?: () => Promise<string | null>
+  onOpenFile?: (callback: (filePath: string) => void) => () => void
 
   // Listeners (Main → Renderer)
   onFileChanged: (callback: (filePath: string) => void) => void

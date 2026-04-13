@@ -192,10 +192,27 @@ export function App() {
       if (tab?.isDirty && tab?.autoSave) debouncedSave()
     })
 
+    // Handle file opened via OS "Open with" / double-click .md
+    const openExternalFile = async (filePath: string) => {
+      const data = await FileSystemService.openFile(filePath)
+      if (!data) return
+      const content = base64ToText(data.content)
+      openTab(data.path, data.name, data.ext as FileExt, content)
+    }
+
+    // Check if app was launched with a file argument
+    window.electronAPI.getPendingFile?.().then((fp) => {
+      if (fp) openExternalFile(fp)
+    })
+
+    // Listen for files opened while app is already running (second-instance)
+    const unsubOpenFile = window.electronAPI.onOpenFile?.(openExternalFile)
+
     document.addEventListener('keydown', handleKeyDown)
     document.addEventListener('wheel', handleWheel, { passive: false })
 
     return () => {
+      unsubOpenFile?.();
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('wheel', handleWheel)
       unsubscribeTabs()

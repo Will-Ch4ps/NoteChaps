@@ -39,6 +39,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   setTitleBarOverlay: (options: { color: string; symbolColor: string }) =>
     ipcRenderer.invoke('app:setTitleBarOverlay', options),
+  getPendingFile: () => ipcRenderer.invoke('app:getPendingFile'),
+  onOpenFile: (callback: (filePath: string) => void) => {
+    const handler = (_: unknown, filePath: string) => callback(filePath)
+    ipcRenderer.on('app:openFile', handler)
+    return () => ipcRenderer.removeListener('app:openFile', handler)
+  },
 
   // Listeners (Main → Renderer)
   onFileChanged: (callback: (filePath: string) => void) => {
