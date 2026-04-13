@@ -1,5 +1,6 @@
-import { app, BrowserWindow, shell, ipcMain, session, Menu } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, session, Menu, dialog } from 'electron'
 import { join } from 'path'
+import { writeFileSync } from 'fs'
 
 export class WindowManager {
   private mainWindow: BrowserWindow | null = null
@@ -45,6 +46,29 @@ export class WindowManager {
 
     this.mainWindow.on('ready-to-show', () => {
       this.mainWindow!.show()
+    })
+
+    // Fallback: show window after 5s even if renderer hasn't loaded
+    const fallbackTimer = setTimeout(() => {
+      if (this.mainWindow && !this.mainWindow.isDestroyed() && !this.mainWindow.isVisible()) {
+        this.mainWindow.show()
+        this.mainWindow.webContents.openDevTools()
+      }
+    }, 5000)
+
+    this.mainWindow.on('show', () => clearTimeout(fallbackTimer))
+
+    // Log renderer errors to help debug
+    this.mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
+      const msg = `Renderer failed to load: ${code} ${desc}`
+      try { writeFileSync(join(app.getPath('userData'), 'crash.log'), msg) } catch {}
+      dialog.showErrorBox('NoteChaps - Erro', msg)
+    })
+
+    this.mainWindow.webContents.on('render-process-gone', (_e, details) => {
+      const msg = `Renderer crashed: ${details.reason}`
+      try { writeFileSync(join(app.getPath('userData'), 'crash.log'), msg) } catch {}
+      dialog.showErrorBox('NoteChaps - Erro', msg)
     })
 
     this.mainWindow.webContents.setWindowOpenHandler(({ url }) => {
