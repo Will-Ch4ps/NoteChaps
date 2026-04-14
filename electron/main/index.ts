@@ -1,12 +1,13 @@
 import { app, BrowserWindow, session, ipcMain } from 'electron'
-import { WindowManager } from './windowManager'
+import { existsSync, mkdirSync } from 'fs'
+import { extname, join } from 'path'
 import { setupFileSystemHandlers } from './fileSystem'
 import { buildMenu } from './menuBuilder'
-import { extname } from 'path'
+import { WindowManager } from './windowManager'
 
 /** Extract .md file path from process argv (used by file association / "Open with"). */
 function getFileFromArgs(argv: string[]): string | null {
-  // Skip the electron exe itself and any flags
+  // Skip the electron exe itself and any flags.
   for (const arg of argv.slice(1)) {
     if (!arg.startsWith('-') && extname(arg).toLowerCase() === '.md') {
       return arg
@@ -15,33 +16,54 @@ function getFileFromArgs(argv: string[]): string | null {
   return null
 }
 
+/**
+ * Use LOCALAPPDATA as userData on Windows to avoid silent startup failures
+ * caused by restricted/roaming profiles.
+ */
+function configureUserDataPath(): void {
+  const localAppData = process.env.LOCALAPPDATA
+  if (!localAppData) return
+
+  const preferredPath = join(localAppData, 'NoteChaps')
+  try {
+    if (!existsSync(preferredPath)) {
+      mkdirSync(preferredPath, { recursive: true })
+    }
+    app.setPath('userData', preferredPath)
+  } catch (error) {
+    console.warn('[boot] Failed to configure userData path:', error)
+  }
+}
+
 let pendingFilePath: string | null = null
 
 function main(): void {
-  // Single instance lock — if another instance tries to open, focus the existing window
-  const gotLock = app.requestSingleInstanceLock()
-  if (!gotLock) {
-    app.quit()
-    return
+  configureUserDataPath()
+  app.setAppUserModelId('com.notechaps.app')
+
+  // Single instance lock: if another instance tries to open, focus existing window.
+  const hasSingleInstanceLock = app.requestSingleInstanceLock()
+  if (!hasSingleInstanceLock) {
+    console.warn('[boot] Unable to acquire single instance lock. Continuing startup without lock.')
+  } else {
+    app.on('second-instance', (_event, argv) => {
+      const filePath = getFileFromArgs(argv)
+      const win = BrowserWindow.getAllWindows()[0]
+      if (win) {
+        if (win.isMinimized()) win.restore()
+        win.focus()
+        if (filePath) {
+          win.webContents.send('app:openFile', filePath)
+        }
+      }
+    })
   }
 
-  app.on('second-instance', (_event, argv) => {
-    const filePath = getFileFromArgs(argv)
-    const win = BrowserWindow.getAllWindows()[0]
-    if (win) {
-      if (win.isMinimized()) win.restore()
-      win.focus()
-      if (filePath) {
-        win.webContents.send('app:openFile', filePath)
-      }
-    }
-  })
-
-  // Check if launched with a file argument
+  // Check if launched with a file argument.
   pendingFilePath = getFileFromArgs(process.argv)
 
   app.whenReady().then(() => {
-    // Garante spellchecker ativo no boot (especialmente Windows)
+    // Keep spellchecker enabled at boot.
     session.defaultSession.setSpellCheckerEnabled(true)
     session.defaultSession.setSpellCheckerLanguages(
       Array.from(new Set([app.getLocale(), 'pt-BR', 'en-US'].filter(Boolean).map(l => l.replace('_', '-'))))
@@ -53,7 +75,7 @@ function main(): void {
     setupFileSystemHandlers()
     buildMenu(mainWindow)
 
-    // When the renderer is ready, send the pending file path
+    // When renderer is ready, send pending file path.
     ipcMain.handle('app:getPendingFile', () => {
       const fp = pendingFilePath
       pendingFilePath = null
