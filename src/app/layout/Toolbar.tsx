@@ -40,7 +40,7 @@ function FormatBadge() {
 // ─── Toolbar Principal ───────────────────────────────────────────────────────
 
 export function Toolbar() {
-  const { getActiveTab, setMode } = useTabsStore()
+  const { getActiveTab, setMode, updateScrollPosition } = useTabsStore()
   const { activeView, appActions, formatPainter, setFormatPainter } = useEditorStore()
   const tab = getActiveTab()
   const isRaw = tab?.mode === 'raw'
@@ -89,6 +89,10 @@ export function Toolbar() {
 
   const handleModeToggle = () => {
     if (!tab) return
+    const scrollRoot = document.querySelector<HTMLElement>('[data-editor-scroll-root="true"]')
+    if (scrollRoot) {
+      updateScrollPosition(tab.id, scrollRoot.scrollTop)
+    }
     setMode(tab.id, isRaw ? 'visual' : 'raw')
   }
 

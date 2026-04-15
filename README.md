@@ -62,6 +62,17 @@ Saida:
   - `Ctrl + Tab` proxima aba
   - `Ctrl + Shift + Tab` aba anterior
 - Troca `Ctrl + E` (Visual <-> Raw) mantendo a posicao de rolagem do documento.
+- Navegacao pela estrutura (sidebar direita) em ambos os modos:
+  - no Visual, clica no titulo e salta para a secao no editor;
+  - no Raw, clica no titulo e posiciona/seleciona o heading correspondente no texto.
+- Troca por botao de modo (toolbar) agora tambem preserva a posicao de rolagem.
+- Menu de insercao rapida (`/`) melhorado:
+  - comandos exibidos de forma explicita (ex.: `/diagrama`, `/tabela`, `/codigo`);
+  - filtro por digitacao com ranking por comando/descricao;
+  - menu reposiciona para cima quando faltar espaco no fim da tela.
+- Insercao de diagrama mais robusta:
+  - funciona em arquivo novo mesmo apos apagar titulo inicial;
+  - sempre cria um paragrafo abaixo e move o cursor para continuar digitando.
 - Mermaid com suporte mais amplo:
   - reconhecimento de `flowchart`, `sequenceDiagram`, `stateDiagram-v2`, `classDiagram`, `journey`, `pie`, `gitGraph`, `mindmap`, `timeline`, `quadrantChart`, `requirementDiagram` e `sankey-beta`;
   - fallback para blocos com linguagem Mermaid variante (ex.: `stateDiagram-v2`).

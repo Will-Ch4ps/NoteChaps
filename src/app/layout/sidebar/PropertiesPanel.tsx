@@ -5,6 +5,29 @@ import { formatDate } from '../../../shared/utils'
 import { parseFrontmatter, serializeFrontmatter } from '../../../shared/utils/frontmatter'
 import { HeadingEntry } from '../../../shared/types'
 
+const RAW_JUMP_EVENT = 'notechaps:raw-jump-to-offset'
+
+function collectRawHeadings(rawContent: string): Array<{ level: number; text: string; from: number; to: number }> {
+  const headings: Array<{ level: number; text: string; from: number; to: number }> = []
+  const lines = rawContent.split('\n')
+  let offset = 0
+
+  for (const line of lines) {
+    const match = line.match(/^(#{1,6})\s+(.+?)\s*$/)
+    if (match) {
+      headings.push({
+        level: match[1].length,
+        text: match[2].trim(),
+        from: offset,
+        to: offset + line.length
+      })
+    }
+    offset += line.length + 1
+  }
+
+  return headings
+}
+
 export function PropertiesPanel() {
   const { docProperties, activeView, selectionProperties } = useEditorStore()
   const { getActiveTab, updateRawContent, markDirty } = useTabsStore()
@@ -43,7 +66,23 @@ export function PropertiesPanel() {
     saveFrontmatter({ ...frontmatter, tags: tags.filter(t => t !== tag) })
   , [tags, frontmatter, saveFrontmatter])
 
-  const goToHeading = useCallback((heading: HeadingEntry) => {
+  const goToHeading = useCallback((heading: HeadingEntry, headingIndex: number) => {
+    if (!tab) return
+
+    if (tab.mode === 'raw') {
+      const rawHeadings = collectRawHeadings(tab.rawContent)
+      const fallback = rawHeadings.find((item) => item.level === heading.level && item.text === heading.text)
+      const target = rawHeadings[headingIndex] ?? fallback
+      if (!target) return
+
+      window.dispatchEvent(
+        new CustomEvent(RAW_JUMP_EVENT, {
+          detail: { tabId: tab.id, from: target.from, to: target.to }
+        })
+      )
+      return
+    }
+
     if (!activeView) return
     try {
       const tr = activeView.state.tr.setSelection(
@@ -59,7 +98,7 @@ export function PropertiesPanel() {
         }
       }, 50)
     } catch { /* ignore */ }
-  }, [activeView])
+  }, [activeView, tab])
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -86,7 +125,7 @@ export function PropertiesPanel() {
                 {docProperties.headings.map((h, i) => (
                   <button
                     key={`${h.pos}-${i}`}
-                    onClick={() => goToHeading(h)}
+                    onClick={() => goToHeading(h, i)}
                     title={h.text}
                     className="w-full text-left text-[13px] text-[#cccccc] py-1 px-2 truncate cursor-pointer hover:bg-[#2a2d2e] rounded transition-colors flex items-center gap-2"
                     style={{ paddingLeft: `${8 + (h.level - 1) * 12}px` }}

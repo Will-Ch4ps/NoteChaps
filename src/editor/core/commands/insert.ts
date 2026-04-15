@@ -70,21 +70,39 @@ export function insertDiagram(view: EditorView, diagramCode: string, atPos?: num
     },
     schema.text(diagramCode)
   )
-  const baseTr = view.state.tr
-  const trWithSelection =
-    typeof atPos === 'number'
-      ? baseTr.setSelection(TextSelection.near(baseTr.doc.resolve(Math.max(0, Math.min(atPos, baseTr.doc.content.size))), 1))
-      : baseTr
-
-  const insertFrom = trWithSelection.selection.from
-  let tr = trWithSelection.replaceSelectionWith(node)
-  const afterNode = insertFrom + node.nodeSize
-  const nextNode = tr.doc.nodeAt(afterNode)
-
-  if (!nextNode || !nextNode.isTextblock) {
-    tr = tr.insert(afterNode, schema.nodes.paragraph.create())
+  let tr = view.state.tr
+  if (typeof atPos === 'number') {
+    const safePos = Math.max(0, Math.min(atPos, tr.doc.content.size))
+    tr = tr.setSelection(TextSelection.near(tr.doc.resolve(safePos), 1))
   }
 
+  const { selection } = tr
+  let insertPos = selection.from
+
+  if (selection.empty && selection.$from.parent.isTextblock) {
+    const depth = selection.$from.depth
+    const parent = selection.$from.parent
+    const parentStart = selection.$from.before(depth)
+    const parentEnd = parentStart + parent.nodeSize
+
+    // If current heading is empty, replace it by the diagram to avoid "stuck in title".
+    if (parent.type === schema.nodes.heading && parent.textContent.trim() === '') {
+      tr = tr.replaceWith(parentStart, parentEnd, node)
+      insertPos = parentStart
+    } else {
+      insertPos = selection.$from.after(depth)
+      tr = tr.insert(insertPos, node)
+    }
+  } else if (!selection.empty) {
+    insertPos = selection.from
+    tr = tr.replaceWith(selection.from, selection.to, node)
+  } else {
+    insertPos = selection.from
+    tr = tr.replaceSelectionWith(node)
+  }
+
+  const afterNode = insertPos + node.nodeSize
+  tr = tr.insert(afterNode, schema.nodes.paragraph.create())
   tr = tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(afterNode + 1, tr.doc.content.size)), 1))
   tr = tr.scrollIntoView()
   view.dispatch(tr)

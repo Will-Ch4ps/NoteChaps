@@ -3,6 +3,8 @@ import { shallow } from 'zustand/shallow'
 import { useTabsStore } from '../../store/tabsStore'
 import { useUIStore } from '../../store/uiStore'
 
+const RAW_JUMP_EVENT = 'notechaps:raw-jump-to-offset'
+
 interface RawModeProps {
   tabId: string
   initialContent: string
@@ -43,6 +45,34 @@ export function RawMode({ tabId, initialContent }: RawModeProps) {
   useEffect(() => {
     autoResize()
   }, [resolvedContent, rawFontSize, autoResize])
+
+  useEffect(() => {
+    const onJump = (event: Event) => {
+      const custom = event as CustomEvent<{ tabId: string; from: number; to: number }>
+      const payload = custom.detail
+      if (!payload || payload.tabId !== tabId) return
+
+      const textarea = textareaRef.current
+      if (!textarea) return
+
+      const from = Math.max(0, Math.min(payload.from, textarea.value.length))
+      const to = Math.max(from, Math.min(payload.to, textarea.value.length))
+      textarea.focus({ preventScroll: true })
+      textarea.setSelectionRange(from, to)
+
+      const scrollRoot = document.querySelector<HTMLElement>('[data-editor-scroll-root="true"]')
+      if (!scrollRoot) return
+      const lineHeight = parseFloat(window.getComputedStyle(textarea).lineHeight || '') || rawFontSize * 1.6
+      const lineNumber = textarea.value.slice(0, from).split('\n').length - 1
+      const targetTop = textarea.offsetTop + lineNumber * lineHeight - scrollRoot.clientHeight * 0.35
+      scrollRoot.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
+    }
+
+    window.addEventListener(RAW_JUMP_EVENT, onJump as EventListener)
+    return () => {
+      window.removeEventListener(RAW_JUMP_EVENT, onJump as EventListener)
+    }
+  }, [rawFontSize, tabId])
 
   return (
     <textarea

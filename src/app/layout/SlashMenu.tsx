@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { EditorView } from 'prosemirror-view'
 import { wrapIn } from 'prosemirror-commands'
-import { slashPluginKey, SlashState } from '../../editor/modes/plugins/slashCommandPlugin'
+import { SlashState } from '../../editor/modes/plugins/slashCommandPlugin'
 import { diagramTemplates, DiagramTemplate } from '../../editor/templates/diagramTemplates'
 import { tableTemplates, buildTableNode } from '../../editor/templates/tableTemplates'
 import { insertDiagram, insertTable } from '../../editor/core/commands/insert'
@@ -12,31 +12,39 @@ interface SlashItem {
   label: string
   description: string
   icon: string
+  command: string
+  keywords: string[]
   action: (view: EditorView, from: number, to: number) => void
 }
 
+function getCategoryIcon(cat: DiagramTemplate['category']): string {
+  return { fluxo: '->', sequencia: '=>', arquitetura: '[]', banco: 'DB', planejamento: 'PL' }[cat] ?? '<>'
+}
+
 function buildItems(): SlashItem[] {
-  const diagramItems: SlashItem[] = diagramTemplates.map(t => ({
-    id: t.id,
-    label: t.label,
-    description: t.description,
-    icon: getCategoryIcon(t.category),
+  const diagramItems: SlashItem[] = diagramTemplates.map((template) => ({
+    id: template.id,
+    label: template.label,
+    description: template.description,
+    icon: getCategoryIcon(template.category),
+    command: template.slashCommand,
+    keywords: [template.category, template.label, template.description, template.slashCommand],
     action: (view, from, to) => {
-      const tr = view.state.tr.delete(from, to)
-      view.dispatch(tr)
-      insertDiagram(view, t.code)
+      view.dispatch(view.state.tr.delete(from, to))
+      insertDiagram(view, template.code)
     }
   }))
 
-  const tableItems: SlashItem[] = tableTemplates.map(t => ({
-    id: t.id,
-    label: t.label,
-    description: t.description,
-    icon: '⊞',
+  const tableItems: SlashItem[] = tableTemplates.map((template) => ({
+    id: template.id,
+    label: template.label,
+    description: template.description,
+    icon: 'TB',
+    command: template.slashCommand,
+    keywords: ['tabela', 'table', template.label, template.description, template.slashCommand],
     action: (view, from, to) => {
-      const tr = view.state.tr.delete(from, to)
-      const tableNode = buildTableNode(t)
-      view.dispatch(tr.replaceSelectionWith(tableNode))
+      const tableNode = buildTableNode(template)
+      view.dispatch(view.state.tr.delete(from, to).replaceSelectionWith(tableNode))
       view.focus()
     }
   }))
@@ -45,8 +53,10 @@ function buildItems(): SlashItem[] {
     {
       id: 'tabela',
       label: 'Tabela',
-      description: 'Insere tabela 3×3 vazia',
-      icon: '⊞',
+      description: 'Insere tabela 3x3 vazia.',
+      icon: 'TB',
+      command: '/tabela',
+      keywords: ['tabela', 'table', 'grid'],
       action: (view, from, to) => {
         view.dispatch(view.state.tr.delete(from, to))
         insertTable(view, 3, 3)
@@ -55,18 +65,22 @@ function buildItems(): SlashItem[] {
     {
       id: 'diagrama',
       label: 'Diagrama Mermaid',
-      description: 'Bloco de código mermaid vazio',
-      icon: '◇',
+      description: 'Insere um fluxo base para voce editar.',
+      icon: '<>',
+      command: '/diagrama',
+      keywords: ['diagrama', 'mermaid', 'flowchart', 'grafico'],
       action: (view, from, to) => {
         view.dispatch(view.state.tr.delete(from, to))
-        insertDiagram(view, 'flowchart TD\n    A[Início] --> B[Fim]')
+        insertDiagram(view, 'flowchart TD\n    A[Inicio] --> B[Fim]')
       }
     },
     {
       id: 'codigo',
-      label: 'Bloco de Código',
-      description: 'Insere bloco de código',
+      label: 'Bloco de Codigo',
+      description: 'Insere bloco de codigo simples.',
       icon: '{}',
+      command: '/codigo',
+      keywords: ['codigo', 'code', 'snippet'],
       action: (view, from, to) => {
         const node = schema.nodes.code_block.create({})
         view.dispatch(view.state.tr.delete(from, to).replaceSelectionWith(node))
@@ -75,28 +89,36 @@ function buildItems(): SlashItem[] {
     },
     {
       id: 'citacao',
-      label: 'Citação',
-      description: 'Bloco de citação',
-      icon: '❝',
+      label: 'Citacao',
+      description: 'Insere bloco de citacao.',
+      icon: '""',
+      command: '/citacao',
+      keywords: ['citacao', 'blockquote', 'quote'],
       action: (view, from, to) => {
         view.dispatch(view.state.tr.delete(from, to))
         wrapIn(schema.nodes.blockquote)(view.state, view.dispatch)
         view.focus()
       }
-    },
+    }
   ]
 
   return [...basicItems, ...diagramItems, ...tableItems]
 }
 
-function getCategoryIcon(cat: DiagramTemplate['category']): string {
-  return { fluxo: '→', sequencia: '⟷', arquitetura: '◻', banco: '🗄', planejamento: '📅' }[cat] ?? '◇'
-}
-
-function fuzzyMatch(query: string, label: string, description: string): boolean {
-  if (!query) return true
+function scoreItem(query: string, item: SlashItem): number {
+  if (!query) return 1
   const q = query.toLowerCase()
-  return label.toLowerCase().includes(q) || description.toLowerCase().includes(q)
+  const command = item.command.toLowerCase()
+  const label = item.label.toLowerCase()
+  const desc = item.description.toLowerCase()
+  const keywords = item.keywords.join(' ').toLowerCase()
+
+  if (command === `/${q}`) return 120
+  if (command.startsWith(`/${q}`)) return 90
+  if (label.startsWith(q)) return 70
+  if (keywords.includes(q)) return 40
+  if (desc.includes(q)) return 25
+  return 0
 }
 
 interface SlashMenuProps {
@@ -108,16 +130,22 @@ interface SlashMenuProps {
 export function SlashMenu({ view, slashState, onClose }: SlashMenuProps) {
   const [selectedIdx, setSelectedIdx] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
-  const allItems = buildItems()
+  const allItems = useMemo(() => buildItems(), [])
 
-  const filtered = allItems.filter(item =>
-    fuzzyMatch(slashState.query, item.label, item.description)
-  )
-
-  useEffect(() => { setSelectedIdx(0) }, [slashState.query])
+  const filtered = useMemo(() => {
+    const withScore = allItems
+      .map((item) => ({ item, score: scoreItem(slashState.query, item) }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score || a.item.label.localeCompare(b.item.label))
+    return withScore.map((entry) => entry.item)
+  }, [allItems, slashState.query])
 
   useEffect(() => {
-    const item = listRef.current?.children[selectedIdx] as HTMLElement
+    setSelectedIdx(0)
+  }, [slashState.query])
+
+  useEffect(() => {
+    const item = listRef.current?.children[selectedIdx] as HTMLElement | undefined
     item?.scrollIntoView({ block: 'nearest' })
   }, [selectedIdx])
 
@@ -127,22 +155,22 @@ export function SlashMenu({ view, slashState, onClose }: SlashMenuProps) {
   }, [view, slashState, onClose])
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (!slashState.active) return
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        e.stopPropagation()
-        setSelectedIdx(i => Math.min(i + 1, filtered.length - 1))
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        e.stopPropagation()
-        setSelectedIdx(i => Math.max(i - 1, 0))
-      } else if (e.key === 'Enter' && filtered[selectedIdx]) {
-        e.preventDefault()
-        e.stopPropagation()
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        event.stopPropagation()
+        setSelectedIdx((index) => Math.min(index + 1, filtered.length - 1))
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        event.stopPropagation()
+        setSelectedIdx((index) => Math.max(index - 1, 0))
+      } else if (event.key === 'Enter' && filtered[selectedIdx]) {
+        event.preventDefault()
+        event.stopPropagation()
         executeItem(filtered[selectedIdx])
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
         onClose()
       }
     }
@@ -152,38 +180,66 @@ export function SlashMenu({ view, slashState, onClose }: SlashMenuProps) {
 
   if (filtered.length === 0) return null
 
-  // Posicionar próximo ao cursor
   const coords = view.coordsAtPos(slashState.from)
+  const menuWidth = 360
+  const viewportMargin = 12
+  const estimatedHeight = Math.min(460, 140 + filtered.length * 56)
+  const spaceBelow = window.innerHeight - coords.bottom - viewportMargin
+  const spaceAbove = coords.top - viewportMargin
+  const openUp = spaceBelow < 240 && spaceAbove > spaceBelow
+  const top = openUp
+    ? Math.max(viewportMargin, coords.top - estimatedHeight - 8)
+    : Math.min(coords.bottom + 6, window.innerHeight - estimatedHeight - viewportMargin)
+  const left = Math.max(
+    viewportMargin,
+    Math.min(coords.left, window.innerWidth - menuWidth - viewportMargin)
+  )
+  const maxListHeight = Math.max(160, (openUp ? spaceAbove : spaceBelow) - 72)
+
   const style: React.CSSProperties = {
     position: 'fixed',
-    top: coords.bottom + 4,
-    left: Math.min(coords.left, window.innerWidth - 320),
+    top,
+    left,
+    width: menuWidth,
     zIndex: 99999
   }
 
   return (
-    <div style={style} onClick={e => e.stopPropagation()}>
-      <div className="w-[300px] bg-[#2d2d2d] border border-[#4a4a4a] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden">
-        <div ref={listRef} className="max-h-[320px] overflow-y-auto py-1">
-          {filtered.map((item, i) => (
+    <div style={style} onClick={(event) => event.stopPropagation()}>
+      <div className="bg-[#2d2d2d] border border-[#4a4a4a] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden">
+        <div className="px-3 py-2 border-b border-[#3a3a3a]">
+          <p className="text-[11px] text-[#858585] uppercase tracking-wide">Insercao Rapida</p>
+          <p className="text-[12px] text-[#cccccc] mt-0.5">
+            {slashState.query ? `Filtro: /${slashState.query}` : 'Digite apos "/" para filtrar comandos'}
+          </p>
+        </div>
+
+        <div ref={listRef} className="overflow-y-auto py-1 scrollbar-thin" style={{ maxHeight: `${maxListHeight}px` }}>
+          {filtered.map((item, index) => (
             <button
               key={item.id}
               onClick={() => executeItem(item)}
-              className={`w-full text-left px-3 py-2 flex items-center gap-3 transition-colors ${
-                i === selectedIdx ? 'bg-[#094771] text-white' : 'text-[#cccccc] hover:bg-[#37373d]'
+              className={`w-full text-left px-3 py-2 transition-colors ${
+                index === selectedIdx ? 'bg-[#094771] text-white' : 'text-[#cccccc] hover:bg-[#37373d]'
               }`}
             >
-              <span className="w-6 text-center text-[14px] flex-shrink-0 opacity-70">{item.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium truncate">{item.label}</div>
-                <div className="text-[11px] opacity-50 truncate">{item.description}</div>
+              <div className="flex items-start gap-3">
+                <span className="w-7 text-center text-[11px] font-mono mt-0.5 opacity-80 shrink-0">{item.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[13px] font-medium truncate">{item.label}</span>
+                    <span className="text-[10px] font-mono opacity-75 shrink-0">{item.command}</span>
+                  </div>
+                  <p className="text-[11px] opacity-70 leading-snug mt-0.5 whitespace-normal">{item.description}</p>
+                </div>
               </div>
             </button>
           ))}
         </div>
-        <div className="px-3 py-1.5 border-t border-[#3a3a3a] flex gap-3 text-[10px] text-[#555]">
+
+        <div className="px-3 py-1.5 border-t border-[#3a3a3a] flex gap-3 text-[10px] text-[#777]">
           <span><kbd className="bg-[#1a1a1a] px-1 rounded font-mono">↑↓</kbd> navegar</span>
-          <span><kbd className="bg-[#1a1a1a] px-1 rounded font-mono">↵</kbd> inserir</span>
+          <span><kbd className="bg-[#1a1a1a] px-1 rounded font-mono">Enter</kbd> inserir</span>
           <span><kbd className="bg-[#1a1a1a] px-1 rounded font-mono">Esc</kbd> fechar</span>
         </div>
       </div>
