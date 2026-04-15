@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useCallback } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef } from 'react'
+import { shallow } from 'zustand/shallow'
 import { useTabsStore } from '../../store/tabsStore'
 import { useUIStore } from '../../store/uiStore'
 
@@ -9,33 +10,44 @@ interface RawModeProps {
 
 export function RawMode({ tabId, initialContent }: RawModeProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const { updateRawContent, markDirty, tabs } = useTabsStore()
-  const { rawFontSize } = useUIStore()
+  const rawFontSize = useUIStore((state) => state.rawFontSize)
+  const { updateRawContent, markDirty } = useTabsStore(
+    (state) => ({
+      updateRawContent: state.updateRawContent,
+      markDirty: state.markDirty
+    }),
+    shallow
+  )
+  const content = useTabsStore((state) => state.tabs.find((tab) => tab.id === tabId)?.rawContent)
 
-  const tab = tabs.find(t => t.id === tabId)
-  const content = tab?.rawContent ?? initialContent
+  const resolvedContent = useMemo(() => content ?? initialContent, [content, initialContent])
 
-  // Auto-grow: reset to 0 first so shrinking works, then set to scrollHeight
   const autoResize = useCallback(() => {
-    const ta = textareaRef.current
-    if (!ta) return
-    ta.style.height = '0'
-    ta.style.height = `${Math.max(ta.scrollHeight, 800)}px`
+    const textarea = textareaRef.current
+    if (!textarea) return
+    textarea.style.height = '0'
+    textarea.style.height = `${Math.max(textarea.scrollHeight, 800)}px`
   }, [])
 
   useEffect(() => {
     autoResize()
-    textareaRef.current?.focus()
+    const textarea = textareaRef.current
+    if (!textarea) return
+    try {
+      textarea.focus({ preventScroll: true })
+    } catch {
+      textarea.focus()
+    }
   }, [tabId, autoResize])
 
   useEffect(() => {
     autoResize()
-  }, [content, rawFontSize, autoResize])
+  }, [resolvedContent, rawFontSize, autoResize])
 
   return (
     <textarea
       ref={textareaRef}
-      value={content}
+      value={resolvedContent}
       className="w-full resize-none outline-none bg-transparent font-mono text-[#1a1a1a] p-0 leading-relaxed"
       style={{
         fontSize: `${rawFontSize}px`,
@@ -44,11 +56,11 @@ export function RawMode({ tabId, initialContent }: RawModeProps) {
         overflowX: 'hidden',
         overflowY: 'hidden',
         minHeight: '800px',
-        display: 'block',
+        display: 'block'
       }}
       spellCheck={false}
-      onChange={(e) => {
-        updateRawContent(tabId, e.target.value)
+      onChange={(event) => {
+        updateRawContent(tabId, event.target.value)
         markDirty(tabId, true)
         autoResize()
       }}

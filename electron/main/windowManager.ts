@@ -13,6 +13,12 @@ export class WindowManager {
       session.defaultSession.addWordToSpellCheckerDictionary(safe)
     })
 
+    ipcMain.handle('spell:replaceMisspelling', (_event, word: string) => {
+      const safe = (word || '').trim()
+      if (!safe) return
+      this.mainWindow?.webContents.replaceMisspelling(safe)
+    })
+
     ipcMain.handle('app:setTitleBarOverlay', (_event, options: { color: string; symbolColor: string }) => {
       if (this.mainWindow && process.platform === 'win32') {
         this.mainWindow.setTitleBarOverlay({ color: options.color, symbolColor: options.symbolColor, height: 40 })

@@ -135,12 +135,35 @@ export function App() {
     window.electronAPI.onMenuAction('saveAs', handleSaveAs)
     window.electronAPI.onMenuAction('openVault', handleOpenVault)
 
+    const saveActiveEditorScroll = () => {
+      const { getActiveTab, updateScrollPosition } = useTabsStore.getState()
+      const tab = getActiveTab()
+      if (!tab) return
+      const scrollRoot = document.querySelector<HTMLElement>('[data-editor-scroll-root="true"]')
+      if (!scrollRoot) return
+      updateScrollPosition(tab.id, scrollRoot.scrollTop)
+    }
+
+    const cycleTabs = (direction: 1 | -1) => {
+      const { tabs, activeTabId, setActiveTab } = useTabsStore.getState()
+      if (tabs.length < 2 || !activeTabId) return
+      const index = tabs.findIndex((tab) => tab.id === activeTabId)
+      if (index < 0) return
+      const nextIndex = (index + direction + tabs.length) % tabs.length
+      setActiveTab(tabs[nextIndex].id)
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey
+      if (mod && e.key === 'Tab') {
+        e.preventDefault()
+        cycleTabs(e.shiftKey ? -1 : 1)
+      }
       if (mod && e.key === 'n') { e.preventDefault(); handleNewFile(); }
       if (mod && !e.shiftKey && e.key === 'o') { e.preventDefault(); handleOpenFile(); }
       if (mod && e.key === 'e') {
         e.preventDefault()
+        saveActiveEditorScroll()
         const { getActiveTab, setMode } = useTabsStore.getState()
         const tab = getActiveTab()
         if (tab) setMode(tab.id, tab.mode === 'visual' ? 'raw' : 'visual')

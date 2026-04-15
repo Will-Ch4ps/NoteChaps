@@ -6,6 +6,7 @@ import { DocProperties, SelectionProperties, FormatPainterState } from '../share
 export interface ActiveDiagram {
   code: string
   pos: number
+  language?: string
 }
 
 export interface ActiveTable {

@@ -53,6 +53,20 @@ Saida:
 2. Conclua a instalacao normalmente (atalho de desktop/menu iniciar habilitado).
 3. Abra o app pelo atalho **NoteChaps**.
 
+## Melhorias recentes de UX
+
+- Tabs com ajuste de largura dinamico:
+  - com poucas abas, mostra nome completo;
+  - com muitas abas, reduz automaticamente e usa truncamento.
+- Navegacao entre abas por atalho:
+  - `Ctrl + Tab` proxima aba
+  - `Ctrl + Shift + Tab` aba anterior
+- Troca `Ctrl + E` (Visual <-> Raw) mantendo a posicao de rolagem do documento.
+- Mermaid com suporte mais amplo:
+  - reconhecimento de `flowchart`, `sequenceDiagram`, `stateDiagram-v2`, `classDiagram`, `journey`, `pie`, `gitGraph`, `mindmap`, `timeline`, `quadrantChart`, `requirementDiagram` e `sankey-beta`;
+  - fallback para blocos com linguagem Mermaid variante (ex.: `stateDiagram-v2`).
+- Enter mais inteligente em blocos selecionados de diagrama/tabela, criando paragrafo abaixo para continuar digitando.
+
 ## Script auxiliar de inicializacao
 
 O arquivo `StartApp.vbs`:
@@ -78,3 +92,4 @@ O arquivo `StartApp.vbs`:
 - `npm run build` - build de producao
 - `npm run preview` - preview
 - `npm run dist` - build + instalador
+- `npm run icons:generate` - regenera logo e icones do app (ICO + PNGs)

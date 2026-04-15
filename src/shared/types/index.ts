@@ -114,7 +114,7 @@ export interface ElectronAPI {
   onOpenFile?: (callback: (filePath: string) => void) => () => void
 
   // Listeners (Main → Renderer)
-  onFileChanged: (callback: (filePath: string) => void) => void
+  onFileChanged: (callback: (filePath: string) => void) => () => void
   onMenuAction: (action: string, callback: () => void) => void
   removeMenuListener: (action: string, callback: () => void) => void
 

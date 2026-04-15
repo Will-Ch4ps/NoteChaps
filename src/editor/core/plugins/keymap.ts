@@ -20,6 +20,7 @@ import {
   sinkListItem
 } from 'prosemirror-schema-list'
 import { undo, redo } from 'prosemirror-history'
+import { NodeSelection, TextSelection } from 'prosemirror-state'
 import { schema } from '../schema'
 
 /**
@@ -66,12 +67,30 @@ export function buildKeymap() {
   bind('Tab', sinkListItem(schema.nodes.list_item))
   bind('Shift-Tab', liftListItem(schema.nodes.list_item))
 
+  const insertParagraphAfterSelectedBlock: typeof keys[string] = (state, dispatch) => {
+    if (!(state.selection instanceof NodeSelection)) return false
+    const selected = state.selection.node
+    const isTable = selected.type === schema.nodes.table
+    const isCodeBlock = selected.type === schema.nodes.code_block
+    if (!isTable && !isCodeBlock) return false
+
+    const insertPos = state.selection.from + selected.nodeSize
+    const paragraph = schema.nodes.paragraph.create()
+    let tr = state.tr.insert(insertPos, paragraph)
+    tr = tr.setSelection(TextSelection.create(tr.doc, insertPos + 1))
+    tr = tr.scrollIntoView()
+
+    if (dispatch) dispatch(tr)
+    return true
+  }
+
   /**
    * BUG FIX: Enter agora funciona naturalmente em todos os contextos
    */
   bind(
     'Enter',
     chainCommands(
+      insertParagraphAfterSelectedBlock,
       splitListItem(schema.nodes.list_item),
       splitListItem(schema.nodes.task_item),
       newlineInCode,

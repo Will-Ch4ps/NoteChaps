@@ -1,12 +1,37 @@
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
-import { readFile, writeFile, rename, mkdir, rm, watch } from 'fs/promises'
-import { existsSync, statSync } from 'fs'
+import { readFile, writeFile, rename, mkdir } from 'fs/promises'
+import { statSync } from 'fs'
 import { join, extname, basename, dirname } from 'path'
 import { FSWatcher, watch as fsWatch } from 'fs'
 
 const watchers = new Map<string, FSWatcher>()
 let vaultWatcher: FSWatcher | null = null
 let vaultWatchDebounce: ReturnType<typeof setTimeout> | null = null
+
+export function cleanupFileSystemWatchers(): void {
+  for (const watcher of watchers.values()) {
+    try {
+      watcher.close()
+    } catch {
+      // ignore
+    }
+  }
+  watchers.clear()
+
+  if (vaultWatchDebounce) {
+    clearTimeout(vaultWatchDebounce)
+    vaultWatchDebounce = null
+  }
+
+  if (vaultWatcher) {
+    try {
+      vaultWatcher.close()
+    } catch {
+      // ignore
+    }
+    vaultWatcher = null
+  }
+}
 
 export function setupFileSystemHandlers(): void {
   // Open vault (folder picker)

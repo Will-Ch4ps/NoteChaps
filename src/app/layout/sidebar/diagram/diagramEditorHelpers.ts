@@ -21,17 +21,79 @@ export const DIAGRAM_TYPE_LABELS: Record<DiagramType, string> = {
 
 // ─── Flowchart ────────────────────────────────────────────────────────────────
 
-export interface FlowNode { id: string; label: string; shape: 'rect' | 'round' | 'diamond' | 'stadium' }
-export interface FlowEdge { from: string; to: string; label: string; style: '-->' | '--->' | '-.->' }
+export type FlowShape = 'rect' | 'round' | 'diamond' | 'stadium' | 'circle' | 'hexagon' | 'parallelogram' | 'trapezoid' | 'cylinder' | 'subroutine'
+export interface FlowNode {
+  id: string
+  label: string
+  shape: FlowShape
+  fill?: string
+  stroke?: string
+  textColor?: string
+}
+export interface FlowEdge { from: string; to: string; label: string; style: '-->' | '--->' | '-.->' | '==>' }
+
+export const SHAPE_OPTIONS: Array<{ value: FlowShape; icon: string; label: string }> = [
+  { value: 'rect',          icon: '▭', label: 'Retângulo' },
+  { value: 'round',         icon: '◖', label: 'Arredondado' },
+  { value: 'stadium',       icon: '⬭', label: 'Stadium' },
+  { value: 'diamond',       icon: '◇', label: 'Decisão' },
+  { value: 'circle',        icon: '○', label: 'Círculo' },
+  { value: 'hexagon',       icon: '⬡', label: 'Hexágono' },
+  { value: 'parallelogram', icon: '▱', label: 'Paralelogramo' },
+  { value: 'trapezoid',     icon: '⏢', label: 'Trapézio' },
+  { value: 'cylinder',      icon: '⌭', label: 'Cilindro' },
+  { value: 'subroutine',    icon: '❐', label: 'Sub-rotina' },
+]
+
+export const COLOR_PRESETS: Array<{ name: string; fill: string; stroke: string; textColor: string }> = [
+  { name: 'Padrão',   fill: '',        stroke: '',        textColor: '' },
+  { name: 'Azul',     fill: '#1e3a8a', stroke: '#4a9eff', textColor: '#e0e8ff' },
+  { name: 'Verde',    fill: '#14532d', stroke: '#4ade80', textColor: '#d1fadf' },
+  { name: 'Vermelho', fill: '#7f1d1d', stroke: '#f87171', textColor: '#fee2e2' },
+  { name: 'Amarelo',  fill: '#713f12', stroke: '#facc15', textColor: '#fef3c7' },
+  { name: 'Roxo',     fill: '#581c87', stroke: '#c084fc', textColor: '#f3e8ff' },
+  { name: 'Cinza',    fill: '#374151', stroke: '#9ca3af', textColor: '#e5e7eb' },
+]
 
 // Shape openers/closers used in buildFlowchart
-const SHAPE_OPEN  = (s: FlowNode['shape']) => s === 'diamond' ? '{' : s === 'stadium' ? '([' : s === 'round' ? '(' : '['
-const SHAPE_CLOSE = (s: FlowNode['shape']) => s === 'diamond' ? '}' : s === 'stadium' ? '])' : s === 'round' ? ')' : ']'
+const SHAPE_OPEN = (s: FlowShape): string => {
+  switch (s) {
+    case 'diamond': return '{'
+    case 'stadium': return '(['
+    case 'round': return '('
+    case 'circle': return '(('
+    case 'hexagon': return '{{'
+    case 'parallelogram': return '[/'
+    case 'trapezoid': return '[/'
+    case 'cylinder': return '[('
+    case 'subroutine': return '[['
+    default: return '['
+  }
+}
+const SHAPE_CLOSE = (s: FlowShape): string => {
+  switch (s) {
+    case 'diamond': return '}'
+    case 'stadium': return '])'
+    case 'round': return ')'
+    case 'circle': return '))'
+    case 'hexagon': return '}}'
+    case 'parallelogram': return '/]'
+    case 'trapezoid': return '\\]'
+    case 'cylinder': return ')]'
+    case 'subroutine': return ']]'
+    default: return ']'
+  }
+}
 
 // Detects the shape from the opening bracket sequence
-function shapeFromOpener(opener: string): FlowNode['shape'] {
+function shapeFromOpener(opener: string): FlowShape {
+  if (opener === '{{') return 'hexagon'
   if (opener === '{')  return 'diamond'
   if (opener === '([') return 'stadium'
+  if (opener === '((') return 'circle'
+  if (opener === '[(') return 'cylinder'
+  if (opener === '[[') return 'subroutine'
+  if (opener === '[/') return 'parallelogram'
   if (opener === '(')  return 'round'
   return 'rect'
 }
@@ -50,31 +112,27 @@ export function parseFlowchart(code: string): { direction: string; nodes: FlowNo
 
   const nodes: FlowNode[]  = []
   const edges: FlowEdge[]  = []
-  const seenNode = new Set<string>()
-
-  // Arrow patterns (not inside brackets)
-  // Matches: --> | ---> | -.-> | ==> | --text--> etc.
-  const ARROW_RE = /(-\.->|---?>|-->|==>)/
+  const nodeIndex = new Map<string, number>()
 
   // Extracts a node from a segment like "A[Label]" or "A([Label])" or "A{Label}" or just "A"
-  const extractNodeFromSegment = (seg: string): { id: string; nodeMatch: boolean; shape: FlowNode['shape']; label: string } | null => {
+  const extractNodeFromSegment = (seg: string): { id: string; nodeMatch: boolean; shape: FlowShape; label: string } | null => {
     const s = seg.trim()
     if (!s) return null
-    // Full node definition: id + shape brackets
-    const m = s.match(/^(\w+)\s*(\(\[|\[|\(|\{)(.+?)(\]\)|\]|\)|\})\s*$/)
-    if (m) {
-      return { id: m[1], nodeMatch: true, shape: shapeFromOpener(m[2]), label: m[3] }
+    const full = s.match(/^(\w+)\s*(\(\[|\(\(|\[\(|\[\[|\[\/|\{\{|\[|\(|\{)([\s\S]+?)(\]\)|\)\)|\)\]|\]\]|\/\]|\\\]|\}\}|\]|\)|\})\s*$/)
+    if (full) {
+      let label = full[3]
+      if (label.startsWith('"') && label.endsWith('"')) label = label.slice(1, -1)
+      label = label.replace(/<br\s*\/?>/gi, '\n')
+      return { id: full[1], nodeMatch: true, shape: shapeFromOpener(full[2]), label }
     }
-    // Bare id
     const bare = s.match(/^(\w+)$/)
     if (bare) return { id: bare[1], nodeMatch: false, shape: 'rect', label: bare[1] }
     return null
   }
 
-  const registerNode = (id: string, label: string, shape: FlowNode['shape'], explicit: boolean) => {
-    if (seenNode.has(id)) return
-    seenNode.add(id)
-    // Only add as a node entry if it has explicit shape/label, or was a bare id
+  const registerNode = (id: string, label: string, shape: FlowShape, explicit: boolean) => {
+    if (nodeIndex.has(id)) return
+    nodeIndex.set(id, nodes.length)
     nodes.push({ id, label: explicit ? label : id, shape })
   }
 
@@ -82,9 +140,23 @@ export function parseFlowchart(code: string): { direction: string; nodes: FlowNo
     const t = raw.trim()
     if (!t || t.startsWith('%') || t.startsWith('subgraph') || t === 'end') continue
 
-    // Split on arrow to detect edge lines
-    // We need to be careful: label text can contain |...| AFTER the arrow
-    // Pattern: <from-segment> <arrow> [|label|] <to-segment>
+    // Style line: style N1 fill:#xxx,stroke:#xxx,color:#xxx
+    const styleMatch = t.match(/^style\s+(\w+)\s+(.+)$/)
+    if (styleMatch) {
+      const [, id, rest] = styleMatch
+      const idx = nodeIndex.get(id)
+      if (idx !== undefined) {
+        const node = nodes[idx]
+        rest.split(',').forEach((pair) => {
+          const [k, v] = pair.split(':').map((s) => s.trim())
+          if (k === 'fill') node.fill = v
+          else if (k === 'stroke') node.stroke = v
+          else if (k === 'color') node.textColor = v
+        })
+      }
+      continue
+    }
+
     const edgeRe = /^(.+?)\s*(-\.->|---?>|-->|==>)\s*(?:\|([^|]*)\|)?\s*(.+)$/
     const em = t.match(edgeRe)
     if (em) {
@@ -96,18 +168,26 @@ export function parseFlowchart(code: string): { direction: string; nodes: FlowNo
       if (toNode)   registerNode(toNode.id, toNode.label, toNode.shape, toNode.nodeMatch)
 
       if (fromNode && toNode) {
-        const style: FlowEdge['style'] = rawArrow.includes('-.') ? '-.->' : rawArrow.includes('--->') ? '--->' : '-->'
-        edges.push({ from: fromNode.id, to: toNode.id, label: pipeLabel ?? '', style })
+        const style: FlowEdge['style'] =
+          rawArrow === '==>' ? '==>' :
+          rawArrow.includes('-.') ? '-.->' :
+          rawArrow === '--->' ? '--->' : '-->'
+        let label = pipeLabel ?? ''
+        if (label.startsWith('"') && label.endsWith('"')) label = label.slice(1, -1)
+        label = label.replace(/<br\s*\/?>/gi, '\n')
+        edges.push({ from: fromNode.id, to: toNode.id, label, style })
       }
       continue
     }
 
     // Standalone node definition (no arrow)
-    const nodeOnly = t.match(/^(\w+)\s*(\(\[|\[|\(|\{)(.+?)(\]\)|\]|\)|\})/)
+    const nodeOnly = t.match(/^(\w+)\s*(\(\[|\(\(|\[\(|\[\[|\[\/|\{\{|\[|\(|\{)([\s\S]+?)(\]\)|\)\)|\)\]|\]\]|\/\]|\\\]|\}\}|\]|\)|\})/)
     if (nodeOnly) {
       const id    = nodeOnly[1]
       const shape = shapeFromOpener(nodeOnly[2])
-      const label = nodeOnly[3]
+      let label = nodeOnly[3]
+      if (label.startsWith('"') && label.endsWith('"')) label = label.slice(1, -1)
+      label = label.replace(/<br\s*\/?>/gi, '\n')
       registerNode(id, label, shape, true)
     }
   }
@@ -115,12 +195,34 @@ export function parseFlowchart(code: string): { direction: string; nodes: FlowNo
   return { direction, nodes, edges }
 }
 
+// Escapes a user-entered label so it renders correctly in mermaid.
+// Converts newlines into <br/> and wraps in double quotes to allow special chars.
+function escapeLabel(label: string): string {
+  const text = label
+    .replace(/"/g, "'")
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join('<br/>')
+  return `"${text || ' '}"`
+}
+
 export function buildFlowchart(direction: string, nodes: FlowNode[], edges: FlowEdge[]): string {
   const lines = [`flowchart ${direction}`]
-  for (const n of nodes) lines.push(`    ${n.id}${SHAPE_OPEN(n.shape)}${n.label}${SHAPE_CLOSE(n.shape)}`)
+  for (const n of nodes) {
+    lines.push(`    ${n.id}${SHAPE_OPEN(n.shape)}${escapeLabel(n.label)}${SHAPE_CLOSE(n.shape)}`)
+  }
   for (const e of edges) {
-    const label = e.label ? `|${e.label}|` : ''
+    const label = e.label ? `|${escapeLabel(e.label)}|` : ''
     lines.push(`    ${e.from} ${e.style}${label} ${e.to}`)
+  }
+  // Style directives at the end
+  for (const n of nodes) {
+    const parts: string[] = []
+    if (n.fill) parts.push(`fill:${n.fill}`)
+    if (n.stroke) parts.push(`stroke:${n.stroke},stroke-width:2px`)
+    if (n.textColor) parts.push(`color:${n.textColor}`)
+    if (parts.length) lines.push(`    style ${n.id} ${parts.join(',')}`)
   }
   return lines.join('\n')
 }

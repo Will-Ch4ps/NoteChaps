@@ -10,12 +10,14 @@ import { buildInputRules } from './plugins/inputRules'
 import { placeholderPlugin } from './plugins/placeholder'
 import { createSlashCommandPlugin } from '../modes/plugins/slashCommandPlugin'
 import { findPlugin } from '../modes/plugins/findPlugin'
+import { tableNavPlugin } from '../modes/plugins/tableNavPlugin'
 
 export function createEditorState(doc?: Node): EditorState {
   return EditorState.create({
     schema,
     doc,
     plugins: [
+      tableNavPlugin(),
       buildInputRules(),
       buildKeymap(),
       history(),

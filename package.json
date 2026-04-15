@@ -7,7 +7,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "icons:generate": "py -3 build/generate_icon.py"
   },
   "dependencies": {
     "docx": "^8.5.0",
@@ -55,6 +56,13 @@
     "files": [
       "out",
       "dist"
+    ],
+    "extraResources": [
+      {
+        "from": "build",
+        "to": "build",
+        "filter": ["icon.ico", "icon.png"]
+      }
     ],
     "icon": "build/icon.ico",
     "fileAssociations": [

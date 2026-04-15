@@ -1,7 +1,7 @@
 import { app, BrowserWindow, session, ipcMain } from 'electron'
 import { existsSync, mkdirSync } from 'fs'
 import { extname, join } from 'path'
-import { setupFileSystemHandlers } from './fileSystem'
+import { cleanupFileSystemWatchers, setupFileSystemHandlers } from './fileSystem'
 import { buildMenu } from './menuBuilder'
 import { WindowManager } from './windowManager'
 
@@ -93,6 +93,10 @@ function main(): void {
     if (process.platform !== 'darwin') {
       app.quit()
     }
+  })
+
+  app.on('before-quit', () => {
+    cleanupFileSystemWatchers()
   })
 }
 

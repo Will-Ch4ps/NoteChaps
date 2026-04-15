@@ -39,44 +39,49 @@ export function ErEditor({ code, onChange }: Props) {
   const updateRel = (i: number, patch: Partial<ErRel>) =>
     setRels(rs => rs.map((r, idx) => idx === i ? { ...r, ...patch } : r))
 
+  const REL_LABELS: Record<string, string> = {
+    '||--||': 'Um-Um',
+    '||--o{': 'Um-Muitos',
+    '||--|{': 'Um-N (obrig.)',
+    'o{--o{': 'N-N',
+  }
+
   return (
-    <div className="p-3 space-y-4">
+    <div className="p-3 space-y-4 min-w-0">
       {/* Entities */}
-      <div>
+      <div className="min-w-0">
         <div className="flex items-center justify-between mb-2">
-          <Label>Entidades</Label>
+          <Label>Entidades ({entities.length})</Label>
           <button onClick={addEntity} className="text-[11px] text-[#4a9eff] hover:text-[#3a8eef] transition-colors">+ Entidade</button>
         </div>
         <div className="space-y-2">
           {entities.map((e, ei) => (
-            <div key={ei} className="bg-[#1e1e1e] rounded border border-[#333] overflow-hidden">
-              {/* Entity header */}
-              <div className="flex items-center gap-2 px-2 py-1.5 bg-[#252526] border-b border-[#333]">
+            <div key={ei} className="bg-[#1e1e1e] rounded border border-[#333] overflow-hidden min-w-0">
+              <div className="flex items-center gap-2 px-2 py-1.5 bg-[#252526] border-b border-[#333] min-w-0">
                 <input
                   value={e.name}
                   onChange={ev => updateName(ei, ev.target.value)}
-                  className="flex-1 bg-transparent text-[#cccccc] text-[12px] font-semibold font-mono outline-none"
+                  className="flex-1 min-w-0 bg-transparent text-[#cccccc] text-[12px] font-semibold font-mono outline-none"
                 />
-                <button onClick={() => addField(ei)} className="text-[10px] text-[#4a9eff] hover:text-[#3a8eef] transition-colors">+ Campo</button>
-                <button onClick={() => removeEntity(ei)} className="text-[#555] hover:text-[#ff6b6b] text-sm transition-colors">×</button>
+                <button onClick={() => addField(ei)} className="text-[10px] text-[#4a9eff] hover:text-[#3a8eef] transition-colors shrink-0">+ Campo</button>
+                <button onClick={() => removeEntity(ei)} className="text-[#555] hover:text-[#ff6b6b] text-sm transition-colors shrink-0">×</button>
               </div>
-              {/* Fields */}
               <div className="p-1.5 space-y-1">
                 {e.fields.map((f, fi) => (
-                  <div key={fi} className="flex items-center gap-1 text-[11px]">
+                  <div key={fi} className="flex items-center gap-1 text-[11px] min-w-0">
                     <select value={f.type} onChange={ev => updateField(ei, fi, { type: ev.target.value })}
-                      className="bg-[#2a2a2a] text-[#aaa] text-[10px] px-1 py-0.5 rounded border border-[#3a3a3a] outline-none">
+                      className="bg-[#2a2a2a] text-[#aaa] text-[10px] px-1 py-0.5 rounded border border-[#3a3a3a] outline-none shrink-0 w-[72px]">
                       {FIELD_TYPES.map(t => <option key={t}>{t}</option>)}
                     </select>
                     <input value={f.name} onChange={ev => updateField(ei, fi, { name: ev.target.value })}
                       className="flex-1 min-w-0 bg-[#2a2a2a] text-[#cccccc] text-[11px] px-1.5 py-0.5 rounded border border-[#3a3a3a] outline-none focus:border-[#4a9eff]" />
                     <select value={f.key} onChange={ev => updateField(ei, fi, { key: ev.target.value as ErField['key'] })}
-                      className="bg-[#2a2a2a] text-[#aaa] text-[10px] px-1 py-0.5 rounded border border-[#3a3a3a] outline-none">
+                      className="bg-[#2a2a2a] text-[#aaa] text-[10px] px-1 py-0.5 rounded border border-[#3a3a3a] outline-none shrink-0 w-[42px]">
                       <option value="">-</option>
                       <option value="PK">PK</option>
                       <option value="FK">FK</option>
                     </select>
-                    <button onClick={() => removeField(ei, fi)} className="text-[#555] hover:text-[#ff6b6b] transition-colors">×</button>
+                    <button onClick={() => removeField(ei, fi)} className="text-[#555] hover:text-[#ff6b6b] transition-colors shrink-0 px-1">×</button>
                   </div>
                 ))}
               </div>
@@ -85,10 +90,10 @@ export function ErEditor({ code, onChange }: Props) {
         </div>
       </div>
 
-      {/* Relationships */}
-      <div>
+      {/* Relationships — stacked vertically for narrow sidebars */}
+      <div className="min-w-0">
         <div className="flex items-center justify-between mb-2">
-          <Label>Relacionamentos</Label>
+          <Label>Relacionamentos ({rels.length})</Label>
           <button
             onClick={() => entities.length >= 2 && setRels(rs => [...rs, { from: entities[0].name, rel: '||--o{', to: entities[1].name, label: 'tem' }])}
             disabled={entities.length < 2}
@@ -97,26 +102,38 @@ export function ErEditor({ code, onChange }: Props) {
             + Relação
           </button>
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           {rels.map((r, ri) => (
-            <div key={ri} className="flex items-center gap-1 bg-[#1e1e1e] px-2 py-1.5 rounded border border-[#333]">
-              <select value={r.from} onChange={e => updateRel(ri, { from: e.target.value })}
-                className="flex-1 bg-[#2a2a2a] text-[#aaa] text-[10px] px-1 py-0.5 rounded border border-[#3a3a3a] outline-none">
-                {entities.map(e => <option key={e.name}>{e.name}</option>)}
-              </select>
-              <select value={r.rel} onChange={e => updateRel(ri, { rel: e.target.value })}
-                className="bg-[#2a2a2a] text-[#aaa] text-[10px] px-1 py-0.5 rounded border border-[#3a3a3a] outline-none font-mono">
-                {REL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <select value={r.to} onChange={e => updateRel(ri, { to: e.target.value })}
-                className="flex-1 bg-[#2a2a2a] text-[#aaa] text-[10px] px-1 py-0.5 rounded border border-[#3a3a3a] outline-none">
-                {entities.map(e => <option key={e.name}>{e.name}</option>)}
-              </select>
-              <input value={r.label} onChange={e => updateRel(ri, { label: e.target.value })}
-                placeholder="label"
-                className="w-14 bg-[#2a2a2a] text-[#cccccc] text-[10px] px-1 py-0.5 rounded border border-[#3a3a3a] outline-none focus:border-[#4a9eff]" />
-              <button onClick={() => setRels(rs => rs.filter((_, i) => i !== ri))}
-                className="text-[#555] hover:text-[#ff6b6b] transition-colors">×</button>
+            <div key={ri} className="bg-[#1e1e1e] px-2 py-2 rounded border border-[#333] space-y-1.5 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[9px] text-[#666] uppercase shrink-0 w-8">De</span>
+                <select value={r.from} onChange={e => updateRel(ri, { from: e.target.value })}
+                  className="flex-1 min-w-0 bg-[#2a2a2a] text-[#aaa] text-[11px] px-2 py-1 rounded border border-[#3a3a3a] outline-none">
+                  {entities.map(e => <option key={e.name}>{e.name}</option>)}
+                </select>
+                <button onClick={() => setRels(rs => rs.filter((_, i) => i !== ri))}
+                  className="text-[#555] hover:text-[#ff6b6b] transition-colors shrink-0 px-1.5">×</button>
+              </div>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[9px] text-[#666] uppercase shrink-0 w-8">Tipo</span>
+                <select value={r.rel} onChange={e => updateRel(ri, { rel: e.target.value })}
+                  className="flex-1 min-w-0 bg-[#2a2a2a] text-[#aaa] text-[11px] px-2 py-1 rounded border border-[#3a3a3a] outline-none">
+                  {REL_TYPES.map(t => <option key={t} value={t}>{t}  —  {REL_LABELS[t] || t}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[9px] text-[#666] uppercase shrink-0 w-8">Para</span>
+                <select value={r.to} onChange={e => updateRel(ri, { to: e.target.value })}
+                  className="flex-1 min-w-0 bg-[#2a2a2a] text-[#aaa] text-[11px] px-2 py-1 rounded border border-[#3a3a3a] outline-none">
+                  {entities.map(e => <option key={e.name}>{e.name}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[9px] text-[#666] uppercase shrink-0 w-8">Label</span>
+                <input value={r.label} onChange={e => updateRel(ri, { label: e.target.value })}
+                  placeholder="ex: possui, pertence a..."
+                  className="flex-1 min-w-0 bg-[#2a2a2a] text-[#cccccc] text-[11px] px-2 py-1 rounded border border-[#3a3a3a] outline-none focus:border-[#4a9eff]" />
+              </div>
             </div>
           ))}
         </div>

@@ -1,13 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-/**
- * BUG FIX: O onMenuAction original criava wrappers anônimos que impossibilitavam
- * a remoção posterior. Agora armazena o mapeamento callback → wrapper para que
- * removeMenuListener funcione corretamente.
- *
- * Padrão baseado em: Event listener cleanup best practices
- */
-const menuListenerMap = new Map<string, Map<Function, (...args: any[]) => void>>()
+const menuListenerMap = new Map<string, Map<Function, (...args: unknown[]) => void>>()
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // File System
@@ -46,9 +39,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('app:openFile', handler)
   },
 
-  // Listeners (Main → Renderer)
+  // Listeners (Main -> Renderer)
   onFileChanged: (callback: (filePath: string) => void) => {
-    ipcRenderer.on('fs:fileChanged', (_event, filePath) => callback(filePath))
+    const handler = (_: unknown, filePath: string) => callback(filePath)
+    ipcRenderer.on('fs:fileChanged', handler)
+    return () => ipcRenderer.removeListener('fs:fileChanged', handler)
   },
 
   onMenuAction: (action: string, callback: () => void) => {
@@ -59,7 +54,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       menuListenerMap.set(channel, new Map())
     }
     menuListenerMap.get(channel)!.set(callback, wrapper)
-
     ipcRenderer.on(channel, wrapper)
   },
 
@@ -75,4 +69,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  // Spell check
+  onSpellSuggestions: (callback: (data: { word: string; suggestions: string[] } | null) => void) => {
+    const handler = (_: unknown, data: { word: string; suggestions: string[] } | null) => callback(data)
+    ipcRenderer.on('spell:suggestions', handler)
+    return () => ipcRenderer.removeListener('spell:suggestions', handler)
+  },
+  addToSpellCheckerDictionary: (word: string) => ipcRenderer.invoke('spell:addWord', word),
+  replaceMisspelling: (word: string) => ipcRenderer.invoke('spell:replaceMisspelling', word)
 })

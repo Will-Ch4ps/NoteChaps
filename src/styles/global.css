@@ -723,11 +723,26 @@ li[data-type="task_item"][data-checked="true"] .task-content p {
   justify-content: center;
 }
 .diagram-svg-container svg {
-  width: 100% !important;
-  height: auto !important;
   max-width: 100%;
+  height: auto;
   min-height: 100px;
   display: block;
+}
+/* Permite que labels HTML dentro do SVG quebrem linha e não cortem texto */
+.diagram-svg-container svg foreignObject,
+.diagram-svg-container svg foreignObject > div,
+.diagram-svg-container svg foreignObject .nodeLabel,
+.diagram-svg-container svg foreignObject .edgeLabel {
+  overflow: visible !important;
+  white-space: normal !important;
+  word-break: break-word;
+  line-height: 1.35;
+}
+.diagram-svg-container svg .edgeLabel {
+  max-width: 240px;
+}
+.diagram-svg-container svg .label foreignObject {
+  overflow: visible !important;
 }
 .diagram-btn-bar {
   position: absolute;

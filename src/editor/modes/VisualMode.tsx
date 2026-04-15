@@ -17,6 +17,7 @@ import { WikiLinkSuggestions } from './components/WikiLinkSuggestions'
 import { SlashMenu } from '../../app/layout/SlashMenu'
 import { slashPluginKey, SlashState } from './plugins/slashCommandPlugin'
 import { countWords } from '../../shared/utils'
+import { isMermaidBlock } from '../../shared/mermaid'
 
 interface VisualModeProps {
   tabId: string
@@ -58,7 +59,9 @@ export function VisualMode({ tabId, initialState }: VisualModeProps) {
       nodeViews: {
         code_block(node, view, getPos) {
           const lang = (node.attrs.language as string) || (node.attrs.params as string) || ''
-          if (lang === 'mermaid') return new DiagramView(node, view, getPos as () => number | undefined)
+          if (isMermaidBlock(lang, node.textContent)) {
+            return new DiagramView(node, view, getPos as () => number | undefined)
+          }
           return new CodeBlockView(node)
         },
         table(node, view, getPos) {

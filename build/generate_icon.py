@@ -1,107 +1,86 @@
-"""Generate NoteChaps app icon (.ico + .png) using Pillow."""
-from PIL import Image, ImageDraw
-import os, struct, io
+"""Generate NoteChaps brand icons (.ico + .png variants) with Pillow."""
+from __future__ import annotations
 
-DIR = os.path.dirname(os.path.abspath(__file__))
+from pathlib import Path
+from typing import Iterable
+
+from PIL import Image, ImageDraw
+
+DIR = Path(__file__).resolve().parent
+SIZES = [16, 24, 32, 48, 64, 128, 256, 512]
+
+
+def rounded_line(draw: ImageDraw.ImageDraw, p1: tuple[float, float], p2: tuple[float, float], width: int, color: tuple[int, int, int, int]) -> None:
+    draw.line([p1, p2], fill=color, width=width)
+    radius = width / 2
+    for x, y in (p1, p2):
+        draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill=color)
+
 
 def make_icon(size: int) -> Image.Image:
-    """Create a NoteChaps icon at the given size."""
-    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    pad = size * 0.08
-    r = size * 0.18
+    pad = size * 0.06
+    radius = size * 0.2
 
-    bg_color = (42, 45, 62, 255)
+    bg = (31, 35, 48, 255)
     accent = (74, 158, 255, 255)
+    accent_soft = (158, 210, 255, 255)
 
-    # Rounded rectangle background
     x0, y0, x1, y1 = pad, pad, size - pad, size - pad
-    draw.rounded_rectangle([x0, y0, x1, y1], radius=r, fill=bg_color)
+    draw.rounded_rectangle([x0, y0, x1, y1], radius=radius, fill=bg)
 
-    # Subtle border
-    border_color = (74, 158, 255, 60)
-    draw.rounded_rectangle([x0, y0, x1, y1], radius=r, outline=border_color, width=max(1, size // 64))
-
-    # "N" monogram
-    inner_pad = size * 0.24
-    left = inner_pad
-    right = size - inner_pad
-    top = inner_pad + size * 0.02
-    bottom = size - inner_pad + size * 0.02
-    stroke_w = max(2, int(size * 0.10))
-
-    draw.line([(left, bottom), (left, top)], fill=accent, width=stroke_w)
-    draw.line([(left, top), (right, bottom)], fill=accent, width=stroke_w)
-    draw.line([(right, bottom), (right, top)], fill=accent, width=stroke_w)
-
-    # Small pen accent at bottom-right
-    pen_start_x = right - size * 0.02
-    pen_start_y = bottom + size * 0.06
-    pen_end_x = right + size * 0.08
-    pen_end_y = bottom - size * 0.04
-    pen_color = (130, 190, 255, 255)
-    pen_w = max(1, stroke_w // 2)
-    draw.line([(pen_start_x, pen_start_y), (pen_end_x, pen_end_y)], fill=pen_color, width=pen_w)
-
-    dot_r = max(1, pen_w)
-    draw.ellipse(
-        [pen_start_x - dot_r, pen_start_y - dot_r, pen_start_x + dot_r, pen_start_y + dot_r],
-        fill=pen_color
+    inset = max(1, int(size * 0.016))
+    draw.rounded_rectangle(
+        [x0 + inset, y0 + inset, x1 - inset, y1 - inset],
+        radius=radius - inset,
+        outline=(74, 158, 255, 110),
+        width=max(1, size // 70),
     )
+
+    # "N" monogram with note-cut accent.
+    left = size * 0.30
+    right = size * 0.70
+    top = size * 0.30
+    bottom = size * 0.70
+    stroke = max(2, int(size * 0.1))
+
+    rounded_line(draw, (left, bottom), (left, top), stroke, accent)
+    rounded_line(draw, (left, top), (right, bottom), stroke, accent)
+    rounded_line(draw, (right, bottom), (right, top), stroke, accent)
+
+    nib_start = (right - size * 0.02, bottom + size * 0.06)
+    nib_end = (right + size * 0.10, bottom - size * 0.06)
+    rounded_line(draw, nib_start, nib_end, max(1, stroke // 2), accent_soft)
 
     return img
 
 
-def build_ico(images_dict, path):
-    """Build a proper .ico file manually from PIL images."""
-    sizes_to_include = [16, 24, 32, 48, 64, 128, 256]
-    entries = []
-
-    for s in sizes_to_include:
-        img = images_dict[s].convert('RGBA')
-        buf = io.BytesIO()
-        img.save(buf, format='PNG')
-        png_data = buf.getvalue()
-
-        w = 0 if s >= 256 else s
-        h = 0 if s >= 256 else s
-        entries.append((w, h, png_data))
-
-    num = len(entries)
-    # ICO header: 2(reserved) + 2(type=1) + 2(count)
-    header = struct.pack('<HHH', 0, 1, num)
-
-    # Each directory entry: 16 bytes
-    dir_offset = 6 + num * 16
-    directory = b''
-    data_blobs = b''
-
-    for (w, h, png_data) in entries:
-        # ICONDIRENTRY: width, height, color_count, reserved, planes, bit_count, size, offset
-        entry = struct.pack('<BBBBHHII', w, h, 0, 0, 1, 32, len(png_data), dir_offset + len(data_blobs))
-        directory += entry
-        data_blobs += png_data
-
-    with open(path, 'wb') as f:
-        f.write(header + directory + data_blobs)
+def save_png_sizes(base: Image.Image, sizes: Iterable[int]) -> None:
+    for size in sizes:
+        out = base.resize((size, size), Image.Resampling.LANCZOS)
+        out.save(DIR / f"icon_{size}x{size}.png", format="PNG")
 
 
-# Generate PNGs at multiple sizes
-sizes = [16, 24, 32, 48, 64, 128, 256, 512]
-images = {}
-for s in sizes:
-    img = make_icon(s)
-    images[s] = img
+def main() -> None:
+    base = make_icon(512)
 
-# Save main icon.png (256x256)
-images[256].save(os.path.join(DIR, 'icon.png'))
+    # Main png for package metadata
+    base.resize((256, 256), Image.Resampling.LANCZOS).save(DIR / "icon.png", format="PNG")
 
-# Build proper ICO
-build_ico(images, os.path.join(DIR, 'icon.ico'))
+    # Multi-size ico for Windows installer
+    base.save(
+        DIR / "icon.ico",
+        format="ICO",
+        sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+    )
 
-ico_size = os.path.getsize(os.path.join(DIR, 'icon.ico'))
-png_size = os.path.getsize(os.path.join(DIR, 'icon.png'))
-print(f"icon.ico: {ico_size:,} bytes")
-print(f"icon.png: {png_size:,} bytes")
-print("Done!")
+    # Explicit png variants (useful for docs/tests and backwards compatibility)
+    save_png_sizes(base, SIZES)
+
+    print(f"Generated icon assets in: {DIR}")
+
+
+if __name__ == "__main__":
+    main()
