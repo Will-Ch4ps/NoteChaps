@@ -184,10 +184,34 @@ export function DiagramPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin min-w-0">
-        {type === 'flowchart' && <FlowchartEditor code={code} onChange={setCode} />}
-        {type === 'sequence' && <SequenceEditor code={code} onChange={setCode} />}
-        {type === 'er' && <ErEditor code={code} onChange={setCode} />}
-        {type === 'gantt' && <GanttEditor code={code} onChange={setCode} />}
+        {type === 'flowchart' && (
+          <FlowchartEditor
+            key={`flow-${activeDiagram.pos}`}
+            code={code}
+            onChange={setCode}
+          />
+        )}
+        {type === 'sequence' && (
+          <SequenceEditor
+            key={`sequence-${activeDiagram.pos}`}
+            code={code}
+            onChange={setCode}
+          />
+        )}
+        {type === 'er' && (
+          <ErEditor
+            key={`er-${activeDiagram.pos}`}
+            code={code}
+            onChange={setCode}
+          />
+        )}
+        {type === 'gantt' && (
+          <GanttEditor
+            key={`gantt-${activeDiagram.pos}`}
+            code={code}
+            onChange={setCode}
+          />
+        )}
         {ADVANCED_TYPES.has(type) && <GenericMermaidEditor type={type} code={code} onChange={setCode} />}
 
         {type !== 'unknown' && (

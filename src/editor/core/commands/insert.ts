@@ -62,9 +62,9 @@ export function insertTable(view: EditorView, rows = 3, cols = 3) {
 
 export function insertDiagram(view: EditorView, diagramCode: string) {
   const node = schema.nodes.code_block.create({ language: 'mermaid' }, schema.text(diagramCode))
+  const insertFrom = view.state.selection.from
   let tr = view.state.tr.replaceSelectionWith(node)
-  const blockStart = tr.selection.from
-  const afterNode = blockStart + node.nodeSize
+  const afterNode = insertFrom + node.nodeSize
   const nextNode = tr.doc.nodeAt(afterNode)
 
   if (!nextNode || !nextNode.isTextblock) {
