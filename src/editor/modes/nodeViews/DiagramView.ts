@@ -7,6 +7,7 @@ import { getMermaidRenderCode, isMermaidBlock } from '../../../shared/mermaid'
 
 let mermaidInitialized = false
 let diagramCounter = 0
+let activeDiagramSessionCounter = 0
 
 function escapeHtml(value: string): string {
   return value
@@ -83,6 +84,7 @@ export class DiagramView implements NodeView {
   private panOrigin = { x: 0, y: 0 }
   private onWindowMouseMove: ((event: MouseEvent) => void) | null = null
   private onWindowMouseUp: (() => void) | null = null
+  private onDomMouseDown: ((event: MouseEvent) => void) | null = null
 
   constructor(node: PMNode, view: EditorView, getPos: () => number | undefined) {
     this.node = node
@@ -93,6 +95,13 @@ export class DiagramView implements NodeView {
     this.dom = document.createElement('div')
     this.dom.className = 'diagram-view'
     this.dom.setAttribute('data-diagram', 'mermaid')
+
+    this.onDomMouseDown = (event: MouseEvent) => {
+      if ((event.target as Element).closest('.diagram-btn-bar')) return
+      if (event.button !== 0) return
+      this.activateInSidebar(false)
+    }
+    this.dom.addEventListener('mousedown', this.onDomMouseDown)
 
     this.renderArea = document.createElement('div')
     this.renderArea.className = 'diagram-rendered'
@@ -237,17 +246,30 @@ export class DiagramView implements NodeView {
   }
 
   private openEditor() {
+    this.activateInSidebar(true)
+  }
+
+  private activateInSidebar(openSidebar: boolean) {
     const pos = this.getPos()
     if (pos === undefined) return
-    const lang = (this.node.attrs.language as string) || (this.node.attrs.params as string) || ''
-    const renderCode = getMermaidRenderCode(lang, this.node.textContent)
+    const liveNode = this.view.state.doc.nodeAt(pos)
+    const sourceNode = liveNode && liveNode.type === schema.nodes.code_block ? liveNode : this.node
+    const lang = (sourceNode.attrs.language as string) || (sourceNode.attrs.params as string) || ''
+    const renderCode = getMermaidRenderCode(lang, sourceNode.textContent)
 
-    useEditorStore.getState().setActiveDiagram({ code: renderCode, pos, language: lang })
-    import('../../../store/uiStore').then(({ useUIStore }) => {
-      if (!useUIStore.getState().sidebarRightOpen) {
-        useUIStore.getState().toggleSidebarRight()
-      }
+    useEditorStore.getState().setActiveDiagram({
+      code: renderCode,
+      pos,
+      language: lang,
+      sessionId: ++activeDiagramSessionCounter
     })
+    if (openSidebar) {
+      import('../../../store/uiStore').then(({ useUIStore }) => {
+        if (!useUIStore.getState().sidebarRightOpen) {
+          useUIStore.getState().toggleSidebarRight()
+        }
+      })
+    }
   }
 
   async renderDiagram() {
@@ -314,6 +336,10 @@ export class DiagramView implements NodeView {
     if (this.onWindowMouseUp) {
       window.removeEventListener('mouseup', this.onWindowMouseUp)
       this.onWindowMouseUp = null
+    }
+    if (this.onDomMouseDown) {
+      this.dom.removeEventListener('mousedown', this.onDomMouseDown)
+      this.onDomMouseDown = null
     }
 
     const active = useEditorStore.getState().activeDiagram

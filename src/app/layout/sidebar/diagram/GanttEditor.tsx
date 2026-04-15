@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { GanttTask, parseGantt, buildGantt } from './diagramEditorHelpers'
 
 const DURATIONS = ['1d','3d','5d','7d','10d','14d','21d','30d','1w','2w','3w','4w']
@@ -9,10 +9,21 @@ export function GanttEditor({ code, onChange }: Props) {
   const parsed              = useMemo(() => parseGantt(code), [code])
   const [title, setTitle]   = useState(parsed.title)
   const [tasks, setTasks]   = useState<GanttTask[]>(parsed.tasks)
+  const lastSerializedRef   = useRef('')
 
   const sections = useMemo(() => [...new Set(tasks.map(t => t.section))], [tasks])
 
-  useEffect(() => { onChange(buildGantt(title, tasks)) }, [title, tasks])
+  useEffect(() => {
+    const serialized = buildGantt(title, tasks)
+    lastSerializedRef.current = serialized
+    onChange(serialized)
+  }, [title, tasks])
+
+  useEffect(() => {
+    if (code === lastSerializedRef.current) return
+    setTitle(parsed.title)
+    setTasks(parsed.tasks)
+  }, [code, parsed])
 
   const addSection = () => {
     const today = new Date().toISOString().split('T')[0]

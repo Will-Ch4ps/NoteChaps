@@ -16,6 +16,13 @@ import { InsertImageModal } from './toolbar/InsertImageModal'
 import { InsertLinkModal } from './toolbar/InsertLinkModal'
 import { InsertTableModal } from './toolbar/InsertTableModal'
 import { DiagramPickerModal } from './toolbar/DiagramPickerModal'
+import { TextSelection } from 'prosemirror-state'
+import { EditorView } from 'prosemirror-view'
+
+type DiagramInsertTarget = {
+  view: EditorView
+  from: number
+}
 
 // ─── FormatBadge ─────────────────────────────────────────────────────────────
 
@@ -49,6 +56,7 @@ export function Toolbar() {
   const [showLinkModal, setShowLinkModal] = useState(false)
   const [showTableModal, setShowTableModal] = useState(false)
   const [showDiagramModal, setShowDiagramModal] = useState(false)
+  const [diagramInsertTarget, setDiagramInsertTarget] = useState<DiagramInsertTarget | null>(null)
 
   const captureFormat = useCallback(() => {
     if (!activeView) return
@@ -237,7 +245,15 @@ export function Toolbar() {
           <ToolbarButton title="Inserir tabela (Ctrl+Alt+T)" disabled={disabled} onClick={() => !disabled && setShowTableModal(true)}>
             <Icons.Table />
           </ToolbarButton>
-          <ToolbarButton title="Inserir diagrama (Mermaid)" disabled={disabled} onClick={() => !disabled && setShowDiagramModal(true)}>
+          <ToolbarButton
+            title="Inserir diagrama (Mermaid)"
+            disabled={disabled}
+            onClick={() => {
+              if (disabled || !activeView) return
+              setDiagramInsertTarget({ view: activeView, from: activeView.state.selection.from })
+              setShowDiagramModal(true)
+            }}
+          >
             <Icons.Diagram />
           </ToolbarButton>
         </ToolbarGroup>
@@ -283,10 +299,24 @@ export function Toolbar() {
           onClose={() => setShowTableModal(false)}
         />
       )}
-      {showDiagramModal && activeView && (
+      {showDiagramModal && (
         <DiagramPickerModal
-          onSelect={(code) => insertDiagram(activeView, code)}
-          onClose={() => setShowDiagramModal(false)}
+          onSelect={(code) => {
+            const fallbackView = useEditorStore.getState().activeView
+            const view = diagramInsertTarget?.view ?? fallbackView
+            if (!view) return
+            const maxPos = view.state.doc.content.size
+            const basePos = diagramInsertTarget?.from ?? view.state.selection.from
+            const targetPos = Math.max(1, Math.min(basePos, maxPos))
+            const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, targetPos))
+            view.dispatch(tr)
+            view.focus()
+            insertDiagram(view, code)
+          }}
+          onClose={() => {
+            setShowDiagramModal(false)
+            setDiagramInsertTarget(null)
+          }}
         />
       )}
     </>

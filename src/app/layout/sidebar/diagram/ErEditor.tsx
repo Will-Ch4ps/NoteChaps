@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ErEntity, ErField, ErRel, parseEr, buildEr } from './diagramEditorHelpers'
 
 const FIELD_TYPES = ['int', 'string', 'decimal', 'boolean', 'datetime', 'text', 'uuid', 'float']
@@ -10,8 +10,19 @@ export function ErEditor({ code, onChange }: Props) {
   const parsed                  = useMemo(() => parseEr(code), [code])
   const [entities, setEntities] = useState<ErEntity[]>(parsed.entities)
   const [rels, setRels]         = useState<ErRel[]>(parsed.rels)
+  const lastSerializedRef       = useRef('')
 
-  useEffect(() => { onChange(buildEr(entities, rels)) }, [entities, rels])
+  useEffect(() => {
+    const serialized = buildEr(entities, rels)
+    lastSerializedRef.current = serialized
+    onChange(serialized)
+  }, [entities, rels])
+
+  useEffect(() => {
+    if (code === lastSerializedRef.current) return
+    setEntities(parsed.entities)
+    setRels(parsed.rels)
+  }, [code, parsed])
 
   const addEntity = () =>
     setEntities(es => [...es, { name: `ENTIDADE${es.length + 1}`, fields: [{ type: 'int', name: 'id', key: 'PK' }] }])

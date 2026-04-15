@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { SeqParticipant, SeqMessage, parseSequence, buildSequence } from './diagramEditorHelpers'
 
 interface Props { code: string; onChange: (c: string) => void }
@@ -7,9 +7,20 @@ export function SequenceEditor({ code, onChange }: Props) {
   const parsed                      = useMemo(() => parseSequence(code), [code])
   const [participants, setP]        = useState<SeqParticipant[]>(parsed.participants)
   const [messages, setM]            = useState<SeqMessage[]>(parsed.messages)
+  const lastSerializedRef           = useRef('')
   const [newMsg, setNewMsg]         = useState<SeqMessage>({ from: '', to: '', text: '', style: '->>' })
 
-  useEffect(() => { onChange(buildSequence(participants, messages)) }, [participants, messages])
+  useEffect(() => {
+    const serialized = buildSequence(participants, messages)
+    lastSerializedRef.current = serialized
+    onChange(serialized)
+  }, [participants, messages])
+
+  useEffect(() => {
+    if (code === lastSerializedRef.current) return
+    setP(parsed.participants)
+    setM(parsed.messages)
+  }, [code, parsed])
 
   const updateP = (i: number, patch: Partial<SeqParticipant>) =>
     setP(ps => ps.map((p, idx) => idx === i ? { ...p, ...patch } : p))

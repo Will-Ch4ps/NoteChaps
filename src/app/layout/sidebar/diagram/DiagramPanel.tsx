@@ -88,7 +88,7 @@ export function DiagramPanel() {
     setCode(activeDiagram?.code ?? '')
     setPreview('')
     setError('')
-  }, [activeDiagram])
+  }, [activeDiagram?.sessionId, activeDiagram?.code, activeDiagram?.language])
 
   useEffect(() => {
     if (previewTimer.current) clearTimeout(previewTimer.current)
@@ -163,6 +163,7 @@ export function DiagramPanel() {
   }
 
   const type = detectDiagramType(code, activeDiagram.language)
+  const editorKey = activeDiagram.sessionId
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -186,28 +187,28 @@ export function DiagramPanel() {
       <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin min-w-0">
         {type === 'flowchart' && (
           <FlowchartEditor
-            key={`flow-${activeDiagram.pos}`}
+            key={`flow-${editorKey}`}
             code={code}
             onChange={setCode}
           />
         )}
         {type === 'sequence' && (
           <SequenceEditor
-            key={`sequence-${activeDiagram.pos}`}
+            key={`sequence-${editorKey}`}
             code={code}
             onChange={setCode}
           />
         )}
         {type === 'er' && (
           <ErEditor
-            key={`er-${activeDiagram.pos}`}
+            key={`er-${editorKey}`}
             code={code}
             onChange={setCode}
           />
         )}
         {type === 'gantt' && (
           <GanttEditor
-            key={`gantt-${activeDiagram.pos}`}
+            key={`gantt-${editorKey}`}
             code={code}
             onChange={setCode}
           />

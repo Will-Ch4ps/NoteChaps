@@ -7,6 +7,7 @@ export interface ActiveDiagram {
   code: string
   pos: number
   language?: string
+  sessionId: number
 }
 
 export interface ActiveTable {

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react'
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FlowNode,
   FlowEdge,
@@ -18,13 +18,24 @@ export function FlowchartEditor({ code, onChange }: Props) {
   const [nodes, setNodes] = useState<FlowNode[]>(parsed.nodes)
   const [edges, setEdges] = useState<FlowEdge[]>(parsed.edges)
   const [groups, setGroups] = useState<FlowGroup[]>(parsed.groups)
+  const lastSerializedRef = useRef('')
   const [newEdge, setNewEdge] = useState<FlowEdge>({ from: '', to: '', label: '', style: '-->' })
   const [showHelp, setShowHelp] = useState(false)
   const [expandedNode, setExpandedNode] = useState<number | null>(null)
 
   useEffect(() => {
-    onChange(buildFlowchart(direction, nodes, edges, groups))
+    const serialized = buildFlowchart(direction, nodes, edges, groups)
+    lastSerializedRef.current = serialized
+    onChange(serialized)
   }, [direction, nodes, edges, groups])
+
+  useEffect(() => {
+    if (code === lastSerializedRef.current) return
+    setDirection(parsed.direction)
+    setNodes(parsed.nodes)
+    setEdges(parsed.edges)
+    setGroups(parsed.groups)
+  }, [code, parsed])
 
   const updateNode = (i: number, patch: Partial<FlowNode>) =>
     setNodes((ns) => ns.map((n, idx) => (idx === i ? { ...n, ...patch } : n)))
@@ -465,3 +476,4 @@ function NodeSelect({ value, onChange, nodes, placeholder }: {
 function EditorLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] text-[#858585] uppercase tracking-wide font-semibold">{children}</p>
 }
+
