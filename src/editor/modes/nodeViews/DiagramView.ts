@@ -1,15 +1,21 @@
 import mermaid from 'mermaid'
 import { Node as PMNode } from 'prosemirror-model'
-import { NodeSelection, TextSelection } from 'prosemirror-state'
+import { NodeSelection } from 'prosemirror-state'
 import { EditorView, NodeView } from 'prosemirror-view'
 import { schema } from '../../core/schema'
 import { useEditorStore } from '../../../store/editorStore'
 import { getMermaidRenderCode, isMermaidBlock } from '../../../shared/mermaid'
-import { resolveDiagramLayout } from '../../../shared/diagramLayout'
+import {
+  clampDiagramHeight,
+  clampDiagramWidth,
+  DiagramLayout,
+  resolveDiagramLayout
+} from '../../../shared/diagramLayout'
 
 let mermaidInitialized = false
 let diagramCounter = 0
 let activeDiagramSessionCounter = 0
+type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se'
 
 function escapeHtml(value: string): string {
   return value
@@ -77,26 +83,49 @@ export class DiagramView implements NodeView {
   private node: PMNode
   private renderArea: HTMLElement
   private svgContainer: HTMLElement
+  private resizeFrame: HTMLElement
   private renderTimeout: ReturnType<typeof setTimeout> | null = null
 
   private svgZoom = 1
   private svgPan = { x: 0, y: 0 }
   private isPanning = false
+  private isResizing = false
+  private layout: DiagramLayout
   private panStart = { x: 0, y: 0 }
   private panOrigin = { x: 0, y: 0 }
+  private resizeStart:
+    | {
+        direction: ResizeDirection
+        mouseX: number
+        mouseY: number
+        widthPx: number
+        heightPx: number
+        containerWidthPx: number
+      }
+    | null = null
   private onWindowMouseMove: ((event: MouseEvent) => void) | null = null
   private onWindowMouseUp: (() => void) | null = null
+  private onResizeMouseMove: ((event: MouseEvent) => void) | null = null
+  private onResizeMouseUp: (() => void) | null = null
   private onDomMouseDown: ((event: MouseEvent) => void) | null = null
 
   constructor(node: PMNode, view: EditorView, getPos: () => number | undefined) {
     this.node = node
     this.view = view
     this.getPos = getPos
+    this.layout = resolveDiagramLayout(
+      {
+        width: node.attrs.diagramWidth as number | undefined,
+        height: node.attrs.diagramHeight as number | undefined
+      },
+      node.textContent
+    )
     initMermaid()
 
     this.dom = document.createElement('div')
     this.dom.className = 'diagram-view'
     this.dom.setAttribute('data-diagram', 'mermaid')
+    this.dom.draggable = true
 
     this.onDomMouseDown = (event: MouseEvent) => {
       if ((event.target as Element).closest('.diagram-btn-bar')) return
@@ -108,10 +137,17 @@ export class DiagramView implements NodeView {
 
     this.renderArea = document.createElement('div')
     this.renderArea.className = 'diagram-rendered'
+    this.applyLayout(this.layout)
 
     this.svgContainer = document.createElement('div')
     this.svgContainer.className = 'diagram-svg-container'
     this.renderArea.appendChild(this.svgContainer)
+
+    this.resizeFrame = document.createElement('div')
+    this.resizeFrame.className = 'diagram-resize-frame'
+    this.renderArea.appendChild(this.resizeFrame)
+
+    this.createResizeHandles()
 
     this.renderArea.addEventListener(
       'wheel',
@@ -127,7 +163,9 @@ export class DiagramView implements NodeView {
 
     this.renderArea.addEventListener('mousedown', (event) => {
       if (event.button !== 0) return
+      if (this.isResizing) return
       if ((event.target as Element).closest('.diagram-btn-bar')) return
+      if ((event.target as Element).closest('.diagram-resize-handle')) return
       this.isPanning = true
       this.panStart = { x: event.clientX, y: event.clientY }
       this.panOrigin = { x: this.svgPan.x, y: this.svgPan.y }
@@ -136,6 +174,7 @@ export class DiagramView implements NodeView {
     })
 
     this.onWindowMouseMove = (event: MouseEvent) => {
+      if (this.isResizing) return
       if (!this.isPanning) return
       const dx = (event.clientX - this.panStart.x) / this.svgZoom
       const dy = (event.clientY - this.panStart.y) / this.svgZoom
@@ -220,16 +259,6 @@ export class DiagramView implements NodeView {
       this.deleteSelf()
     })
 
-    const continueBtn = document.createElement('button')
-    continueBtn.className = 'diagram-btn'
-    continueBtn.textContent = 'Text'
-    continueBtn.title = 'Continuar digitando abaixo do diagrama'
-    continueBtn.addEventListener('mousedown', (event) => {
-      event.preventDefault()
-      event.stopPropagation()
-      this.moveCursorAfter()
-    })
-
     const moveBtn = document.createElement('button')
     moveBtn.className = 'diagram-btn diagram-btn-move'
     moveBtn.textContent = 'Move'
@@ -244,12 +273,125 @@ export class DiagramView implements NodeView {
       this.selectNodeInDocument()
     })
 
-    buttonBar.append(editBtn, moveBtn, continueBtn, zoomOutBtn, zoomResetBtn, zoomInBtn, copyBtn, deleteBtn)
+    buttonBar.append(editBtn, moveBtn, zoomOutBtn, zoomResetBtn, zoomInBtn, copyBtn, deleteBtn)
 
     this.dom.appendChild(this.renderArea)
     this.dom.appendChild(buttonBar)
 
     this.renderDiagram()
+  }
+
+  private createResizeHandles() {
+    const directions: ResizeDirection[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
+    for (const direction of directions) {
+      const handle = document.createElement('button')
+      handle.type = 'button'
+      handle.className = `diagram-resize-handle diagram-resize-handle-${direction}`
+      handle.title = 'Redimensionar diagrama'
+      handle.addEventListener('mousedown', (event) => this.startResize(direction, event))
+      this.resizeFrame.appendChild(handle)
+    }
+  }
+
+  private startResize(direction: ResizeDirection, event: MouseEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = this.renderArea.getBoundingClientRect()
+    const containerRect = this.dom.getBoundingClientRect()
+    this.isPanning = false
+    this.renderArea.classList.remove('is-panning')
+    this.isResizing = true
+    this.selectNodeInDocument()
+    this.resizeStart = {
+      direction,
+      mouseX: event.clientX,
+      mouseY: event.clientY,
+      widthPx: rect.width,
+      heightPx: rect.height,
+      containerWidthPx: Math.max(1, containerRect.width)
+    }
+
+    this.onResizeMouseMove = (moveEvent: MouseEvent) => this.handleResizeMove(moveEvent)
+    this.onResizeMouseUp = () => this.finishResize()
+    window.addEventListener('mousemove', this.onResizeMouseMove)
+    window.addEventListener('mouseup', this.onResizeMouseUp)
+  }
+
+  private handleResizeMove(event: MouseEvent) {
+    if (!this.resizeStart) return
+
+    const { direction, mouseX, mouseY, widthPx, heightPx, containerWidthPx } = this.resizeStart
+    const dx = event.clientX - mouseX
+    const dy = event.clientY - mouseY
+
+    const horizontalSign = direction.includes('e') ? 1 : direction.includes('w') ? -1 : 0
+    const verticalSign = direction.includes('s') ? 1 : direction.includes('n') ? -1 : 0
+
+    const nextWidthPx = horizontalSign === 0 ? widthPx : widthPx + dx * horizontalSign
+    const nextHeightPx = verticalSign === 0 ? heightPx : heightPx + dy * verticalSign
+
+    const nextWidthPercent = clampDiagramWidth((nextWidthPx / containerWidthPx) * 100)
+    const nextHeight = clampDiagramHeight(nextHeightPx)
+
+    this.layout = { width: nextWidthPercent, height: nextHeight }
+    this.applyLayout(this.layout)
+  }
+
+  private finishResize() {
+    const resizedLayout = this.layout
+    this.isResizing = false
+    this.resizeStart = null
+
+    if (this.onResizeMouseMove) {
+      window.removeEventListener('mousemove', this.onResizeMouseMove)
+      this.onResizeMouseMove = null
+    }
+    if (this.onResizeMouseUp) {
+      window.removeEventListener('mouseup', this.onResizeMouseUp)
+      this.onResizeMouseUp = null
+    }
+
+    this.persistLayout(resizedLayout)
+  }
+
+  private persistLayout(layout: DiagramLayout) {
+    const pos = this.getPos()
+    if (pos === undefined) return
+
+    const { state, dispatch } = this.view
+    const liveNode = state.doc.nodeAt(pos)
+    if (!liveNode || liveNode.type !== schema.nodes.code_block) return
+
+    const width = clampDiagramWidth(layout.width)
+    const height = clampDiagramHeight(layout.height)
+    const currentWidth = liveNode.attrs.diagramWidth as number | null
+    const currentHeight = liveNode.attrs.diagramHeight as number | null
+    if (currentWidth === width && currentHeight === height) return
+
+    let tr = state.tr.setNodeMarkup(pos, undefined, {
+      ...liveNode.attrs,
+      diagramWidth: width,
+      diagramHeight: height
+    })
+    tr = tr.setSelection(NodeSelection.create(tr.doc, pos))
+    dispatch(tr)
+    this.view.focus()
+
+    const active = useEditorStore.getState().activeDiagram
+    if (active && active.pos === pos) {
+      useEditorStore.getState().setActiveDiagram({
+        ...active,
+        width,
+        height,
+        sessionId: ++activeDiagramSessionCounter
+      })
+    }
+  }
+
+  private applyLayout(layout: DiagramLayout) {
+    this.renderArea.style.width = `${layout.width}%`
+    this.renderArea.style.height = `${layout.height}px`
+    this.renderArea.style.maxHeight = `${layout.height}px`
   }
 
   private applyTransform() {
@@ -279,24 +421,6 @@ export class DiagramView implements NodeView {
     const selected = state.selection
     if (selected instanceof NodeSelection && selected.from === pos) return
     dispatch(state.tr.setSelection(NodeSelection.create(state.doc, pos)))
-    this.view.focus()
-  }
-
-  private moveCursorAfter() {
-    const pos = this.getPos()
-    if (pos === undefined) return
-    const node = this.view.state.doc.nodeAt(pos)
-    if (!node) return
-
-    const afterNode = pos + node.nodeSize
-    let tr = this.view.state.tr
-    const next = tr.doc.nodeAt(afterNode)
-    if (!next || !next.isTextblock) {
-      tr = tr.insert(afterNode, schema.nodes.paragraph.create())
-    }
-    tr = tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(afterNode + 1, tr.doc.content.size)), 1))
-    tr = tr.scrollIntoView()
-    this.view.dispatch(tr)
     this.view.focus()
   }
 
@@ -346,8 +470,8 @@ export class DiagramView implements NodeView {
       },
       this.node.textContent
     )
-    this.svgContainer.style.maxWidth = `${layout.width}%`
-    this.renderArea.style.maxHeight = `${layout.height}px`
+    this.layout = layout
+    this.applyLayout(layout)
     const code = getMermaidRenderCode(lang, this.node.textContent).trim()
 
     if (!code) {
@@ -364,10 +488,18 @@ export class DiagramView implements NodeView {
 
       const svgEl = this.svgContainer.querySelector('svg') as SVGSVGElement | null
       if (svgEl) {
+        const widthAttr = Number(svgEl.getAttribute('width') ?? '')
+        const heightAttr = Number(svgEl.getAttribute('height') ?? '')
+        if (!svgEl.getAttribute('viewBox') && Number.isFinite(widthAttr) && Number.isFinite(heightAttr)) {
+          svgEl.setAttribute('viewBox', `0 0 ${widthAttr} ${heightAttr}`)
+        }
         svgEl.removeAttribute('width')
         svgEl.removeAttribute('height')
+        svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+        svgEl.style.width = '100%'
+        svgEl.style.height = '100%'
         svgEl.style.maxWidth = '100%'
-        svgEl.style.height = 'auto'
+        svgEl.style.maxHeight = '100%'
         svgEl.style.display = 'block'
         svgEl.querySelectorAll('foreignObject div').forEach((el) => {
           const html = el as HTMLElement
@@ -417,6 +549,14 @@ export class DiagramView implements NodeView {
     if (this.onWindowMouseUp) {
       window.removeEventListener('mouseup', this.onWindowMouseUp)
       this.onWindowMouseUp = null
+    }
+    if (this.onResizeMouseMove) {
+      window.removeEventListener('mousemove', this.onResizeMouseMove)
+      this.onResizeMouseMove = null
+    }
+    if (this.onResizeMouseUp) {
+      window.removeEventListener('mouseup', this.onResizeMouseUp)
+      this.onResizeMouseUp = null
     }
     if (this.onDomMouseDown) {
       this.dom.removeEventListener('mousedown', this.onDomMouseDown)

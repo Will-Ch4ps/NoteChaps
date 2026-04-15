@@ -9,12 +9,7 @@ import { FlowchartEditor } from './FlowchartEditor'
 import { SequenceEditor } from './SequenceEditor'
 import { ErEditor } from './ErEditor'
 import { GanttEditor } from './GanttEditor'
-import {
-  DEFAULT_DIAGRAM_LAYOUT,
-  clampDiagramHeight,
-  clampDiagramWidth,
-  stripDiagramLayoutMeta
-} from '../../../../shared/diagramLayout'
+import { clampDiagramHeight, clampDiagramWidth, stripDiagramLayoutMeta } from '../../../../shared/diagramLayout'
 
 let previewCounter = 0
 
@@ -88,17 +83,13 @@ export function DiagramPanel() {
   const [previewSvg, setPreview] = useState('')
   const [previewError, setError] = useState('')
   const [showRaw, setShowRaw] = useState(false)
-  const [diagramWidth, setDiagramWidth] = useState(DEFAULT_DIAGRAM_LAYOUT.width)
-  const [diagramHeight, setDiagramHeight] = useState(DEFAULT_DIAGRAM_LAYOUT.height)
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setCode(activeDiagram?.code ?? '')
-    setDiagramWidth(clampDiagramWidth(activeDiagram?.width))
-    setDiagramHeight(clampDiagramHeight(activeDiagram?.height))
     setPreview('')
     setError('')
-  }, [activeDiagram?.sessionId, activeDiagram?.code, activeDiagram?.language, activeDiagram?.width, activeDiagram?.height])
+  }, [activeDiagram?.sessionId, activeDiagram?.code, activeDiagram?.language])
 
   useEffect(() => {
     if (previewTimer.current) clearTimeout(previewTimer.current)
@@ -132,8 +123,8 @@ export function DiagramPanel() {
     const normalizedCode = stripDiagramLayoutMeta(
       getMermaidRenderCode(activeDiagram.language ?? 'mermaid', code).trim()
     )
-    const width = clampDiagramWidth(diagramWidth)
-    const height = clampDiagramHeight(diagramHeight)
+    const width = clampDiagramWidth(activeDiagram.width)
+    const height = clampDiagramHeight(activeDiagram.height)
     const newNode = schema.nodes.code_block.create(
       { language: 'mermaid', diagramWidth: width, diagramHeight: height },
       normalizedCode ? schema.text(normalizedCode) : undefined
@@ -241,37 +232,6 @@ export function DiagramPanel() {
             {showRaw && <RawEditor value={code} onChange={setCode} rows={10} />}
           </div>
         )}
-      </div>
-
-      <div className="px-3 py-2.5 border-t border-[#3e3e42] flex gap-2 shrink-0">
-        <div className="flex-1 min-w-0 pr-2">
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            <label className="text-[10px] text-[#858585] uppercase tracking-wide">
-              Largura ({diagramWidth}%)
-              <input
-                type="range"
-                min={30}
-                max={100}
-                step={1}
-                value={diagramWidth}
-                onChange={(event) => setDiagramWidth(clampDiagramWidth(Number(event.target.value)))}
-                className="w-full mt-1"
-              />
-            </label>
-            <label className="text-[10px] text-[#858585] uppercase tracking-wide">
-              Altura ({diagramHeight}px)
-              <input
-                type="range"
-                min={220}
-                max={1400}
-                step={20}
-                value={diagramHeight}
-                onChange={(event) => setDiagramHeight(clampDiagramHeight(Number(event.target.value)))}
-                className="w-full mt-1"
-              />
-            </label>
-          </div>
-        </div>
       </div>
 
       <div className="px-3 py-2.5 border-t border-[#3e3e42] flex gap-2 shrink-0">

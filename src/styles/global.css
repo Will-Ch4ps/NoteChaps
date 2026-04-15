@@ -711,25 +711,37 @@ li[data-type="task_item"][data-checked="true"] .task-content p {
   box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.3);
 }
 .diagram-rendered {
-  padding: 24px 20px;
-  min-height: 120px;
-  overflow: auto;
+  width: 100%;
+  height: 560px;
+  margin: 14px auto 12px;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: opacity 0.15s;
+  position: relative;
+  border: 1px dashed transparent;
+  border-radius: 8px;
   cursor: default;
+}
+.diagram-view.diagram-selected .diagram-rendered,
+.diagram-view:hover .diagram-rendered {
+  border-color: rgba(74, 158, 255, 0.45);
 }
 .diagram-svg-container {
   width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  transform-origin: center center;
 }
 .diagram-svg-container svg {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
-  height: auto;
-  min-height: 100px;
+  max-height: 100%;
+  min-height: 0;
   display: block;
 }
 /* Permite que labels HTML dentro do SVG quebrem linha e não cortem texto */
@@ -779,6 +791,34 @@ li[data-type="task_item"][data-checked="true"] .task-content p {
 .diagram-btn-move:active {
   cursor: grabbing;
 }
+.diagram-resize-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.diagram-resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #4a9eff;
+  background: #0d2740;
+  border-radius: 2px;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 0.12s ease;
+}
+.diagram-view.diagram-selected .diagram-resize-handle,
+.diagram-view:hover .diagram-resize-handle {
+  opacity: 1;
+}
+.diagram-resize-handle-nw { top: -5px; left: -5px; cursor: nwse-resize; }
+.diagram-resize-handle-ne { top: -5px; right: -5px; cursor: nesw-resize; }
+.diagram-resize-handle-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.diagram-resize-handle-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.diagram-resize-handle-n  { top: -5px; left: calc(50% - 5px); cursor: ns-resize; }
+.diagram-resize-handle-s  { bottom: -5px; left: calc(50% - 5px); cursor: ns-resize; }
+.diagram-resize-handle-e  { right: -5px; top: calc(50% - 5px); cursor: ew-resize; }
+.diagram-resize-handle-w  { left: -5px; top: calc(50% - 5px); cursor: ew-resize; }
 .diagram-loading { color: #666; font-size: 12px; font-style: italic; padding: 12px; }
 .diagram-empty   { color: #555; font-size: 12px; font-style: italic; padding: 24px; text-align: center; }
 .diagram-error {
