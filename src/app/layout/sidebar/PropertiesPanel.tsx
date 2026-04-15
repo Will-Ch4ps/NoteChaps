@@ -5,6 +5,7 @@ import { formatDate } from '../../../shared/utils'
 import { parseFrontmatter, serializeFrontmatter } from '../../../shared/utils/frontmatter'
 import { HeadingEntry } from '../../../shared/types'
 import { TextSelection } from 'prosemirror-state'
+import { Node as PMNode } from 'prosemirror-model'
 
 const RAW_JUMP_EVENT = 'notechaps:raw-jump-to-offset'
 
@@ -26,6 +27,20 @@ function collectRawHeadings(rawContent: string): Array<{ level: number; text: st
     offset += line.length + 1
   }
 
+  return headings
+}
+
+function collectViewHeadings(doc: PMNode): HeadingEntry[] {
+  const headings: HeadingEntry[] = []
+  doc.descendants((node, pos) => {
+    if (node.type.name !== 'heading') return true
+    headings.push({
+      level: Number(node.attrs.level ?? 1),
+      text: node.textContent,
+      pos
+    })
+    return true
+  })
   return headings
 }
 
@@ -86,18 +101,26 @@ export function PropertiesPanel() {
 
     if (!activeView) return
     try {
+      const liveHeadings = collectViewHeadings(activeView.state.doc)
+      const fallback = liveHeadings.find((item) => item.level === heading.level && item.text === heading.text)
+      const targetHeading = liveHeadings[headingIndex] ?? fallback
+      if (!targetHeading) return
+
       const maxPos = activeView.state.doc.content.size
-      const targetPos = Math.max(1, Math.min(heading.pos + 1, maxPos))
+      const targetPos = Math.max(1, Math.min(targetHeading.pos + 1, maxPos))
       const tr = activeView.state.tr.setSelection(TextSelection.near(activeView.state.doc.resolve(targetPos), 1))
       activeView.dispatch(tr)
       activeView.focus()
 
-      const scrollRoot = document.querySelector<HTMLElement>('[data-editor-scroll-root="true"]')
-      if (!scrollRoot) return
-      const coords = activeView.coordsAtPos(targetPos)
-      const rootRect = scrollRoot.getBoundingClientRect()
-      const targetTop = scrollRoot.scrollTop + (coords.top - rootRect.top) - scrollRoot.clientHeight * 0.25
-      scrollRoot.scrollTo({ top: Math.max(0, targetTop), behavior: 'auto' })
+      requestAnimationFrame(() => {
+        const dom = activeView.domAtPos(targetPos)
+        const baseEl =
+          dom.node.nodeType === 1
+            ? (dom.node as HTMLElement)
+            : (dom.node.parentElement as HTMLElement | null)
+        const targetEl = baseEl?.closest('h1,h2,h3,h4,h5,h6') ?? baseEl
+        targetEl?.scrollIntoView({ behavior: 'auto', block: 'center' })
+      })
     } catch { /* ignore */ }
   }, [activeView, tab])
 

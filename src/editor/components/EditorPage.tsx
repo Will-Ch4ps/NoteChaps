@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { shallow } from 'zustand/shallow'
 import { useTabsStore } from '../../store/tabsStore'
 import { useUIStore } from '../../store/uiStore'
@@ -167,7 +167,7 @@ export function EditorPage() {
     return createEditorState(tab.rawContent ? MarkdownConverter.toDoc(tab.rawContent) : undefined)
   }, [tab])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!tab) return
     const root = scrollRef.current
     if (!root) return
@@ -182,24 +182,28 @@ export function EditorPage() {
       lastSavedScrollRef.current = target
     }
 
-    restoreLockUntilRef.current = performance.now() + 260
+    restoreLockUntilRef.current = performance.now() + 900
     apply()
     const rafA = requestAnimationFrame(apply)
     const rafB = requestAnimationFrame(() => requestAnimationFrame(apply))
     const timeoutA = window.setTimeout(apply, 90)
+    const timeoutC = window.setTimeout(apply, 260)
+    const timeoutD = window.setTimeout(apply, 520)
     const timeoutB = window.setTimeout(() => {
       restoreLockUntilRef.current = 0
-    }, 280)
+    }, 920)
 
     return () => {
       cancelAnimationFrame(rafA)
       cancelAnimationFrame(rafB)
       window.clearTimeout(timeoutA)
+      window.clearTimeout(timeoutC)
+      window.clearTimeout(timeoutD)
       window.clearTimeout(timeoutB)
     }
   }, [tab?.id, tab?.mode])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!tab) return
     const root = scrollRef.current
     if (!root) return
