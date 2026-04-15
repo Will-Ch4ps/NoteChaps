@@ -4,6 +4,7 @@ import { useTabsStore } from '../../../store/tabsStore'
 import { formatDate } from '../../../shared/utils'
 import { parseFrontmatter, serializeFrontmatter } from '../../../shared/utils/frontmatter'
 import { HeadingEntry } from '../../../shared/types'
+import { TextSelection } from 'prosemirror-state'
 
 const RAW_JUMP_EVENT = 'notechaps:raw-jump-to-offset'
 
@@ -85,18 +86,18 @@ export function PropertiesPanel() {
 
     if (!activeView) return
     try {
-      const tr = activeView.state.tr.setSelection(
-        activeView.state.selection.constructor.near(activeView.state.doc.resolve(heading.pos + 1))
-      )
+      const maxPos = activeView.state.doc.content.size
+      const targetPos = Math.max(1, Math.min(heading.pos + 1, maxPos))
+      const tr = activeView.state.tr.setSelection(TextSelection.near(activeView.state.doc.resolve(targetPos), 1))
       activeView.dispatch(tr)
       activeView.focus()
-      setTimeout(() => {
-        const dom = activeView.domAtPos(heading.pos + 1)
-        if (dom.node) {
-          const el = dom.node.nodeType === 1 ? dom.node as HTMLElement : dom.node.parentElement as HTMLElement
-          el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        }
-      }, 50)
+
+      const scrollRoot = document.querySelector<HTMLElement>('[data-editor-scroll-root="true"]')
+      if (!scrollRoot) return
+      const coords = activeView.coordsAtPos(targetPos)
+      const rootRect = scrollRoot.getBoundingClientRect()
+      const targetTop = scrollRoot.scrollTop + (coords.top - rootRect.top) - scrollRoot.clientHeight * 0.25
+      scrollRoot.scrollTo({ top: Math.max(0, targetTop), behavior: 'auto' })
     } catch { /* ignore */ }
   }, [activeView, tab])
 

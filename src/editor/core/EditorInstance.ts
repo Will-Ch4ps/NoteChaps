@@ -11,6 +11,7 @@ import { placeholderPlugin } from './plugins/placeholder'
 import { createSlashCommandPlugin } from '../modes/plugins/slashCommandPlugin'
 import { findPlugin } from '../modes/plugins/findPlugin'
 import { tableNavPlugin } from '../modes/plugins/tableNavPlugin'
+import { trailingParagraphPlugin } from './plugins/trailingParagraphPlugin'
 
 export function createEditorState(doc?: Node): EditorState {
   return EditorState.create({
@@ -20,6 +21,7 @@ export function createEditorState(doc?: Node): EditorState {
       tableNavPlugin(),
       buildInputRules(),
       buildKeymap(),
+      trailingParagraphPlugin(),
       history(),
       dropCursor(),
       gapCursor(),

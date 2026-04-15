@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorView } from 'prosemirror-view'
 import { wrapIn } from 'prosemirror-commands'
 import { SlashState } from '../../editor/modes/plugins/slashCommandPlugin'
@@ -17,8 +17,8 @@ interface SlashItem {
   action: (view: EditorView, from: number, to: number) => void
 }
 
-function getCategoryIcon(cat: DiagramTemplate['category']): string {
-  return { fluxo: '->', sequencia: '=>', arquitetura: '[]', banco: 'DB', planejamento: 'PL' }[cat] ?? '<>'
+function getCategoryIcon(category: DiagramTemplate['category']): string {
+  return { fluxo: '->', sequencia: '=>', arquitetura: '[]', banco: 'DB', planejamento: 'PL' }[category] ?? '<>'
 }
 
 function buildItems(): SlashItem[] {
@@ -107,17 +107,17 @@ function buildItems(): SlashItem[] {
 
 function scoreItem(query: string, item: SlashItem): number {
   if (!query) return 1
-  const q = query.toLowerCase()
+  const normalizedQuery = query.toLowerCase()
   const command = item.command.toLowerCase()
   const label = item.label.toLowerCase()
-  const desc = item.description.toLowerCase()
+  const description = item.description.toLowerCase()
   const keywords = item.keywords.join(' ').toLowerCase()
 
-  if (command === `/${q}`) return 120
-  if (command.startsWith(`/${q}`)) return 90
-  if (label.startsWith(q)) return 70
-  if (keywords.includes(q)) return 40
-  if (desc.includes(q)) return 25
+  if (command === `/${normalizedQuery}`) return 120
+  if (command.startsWith(`/${normalizedQuery}`)) return 90
+  if (label.startsWith(normalizedQuery)) return 70
+  if (keywords.includes(normalizedQuery)) return 40
+  if (description.includes(normalizedQuery)) return 25
   return 0
 }
 
@@ -149,33 +149,49 @@ export function SlashMenu({ view, slashState, onClose }: SlashMenuProps) {
     item?.scrollIntoView({ block: 'nearest' })
   }, [selectedIdx])
 
-  const executeItem = useCallback((item: SlashItem) => {
-    onClose()
-    item.action(view, slashState.from, slashState.to)
-  }, [view, slashState, onClose])
+  const executeItem = useCallback(
+    (item: SlashItem) => {
+      onClose()
+      item.action(view, slashState.from, slashState.to)
+    },
+    [view, slashState, onClose]
+  )
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!slashState.active) return
+
       if (event.key === 'ArrowDown') {
         event.preventDefault()
         event.stopPropagation()
         setSelectedIdx((index) => Math.min(index + 1, filtered.length - 1))
-      } else if (event.key === 'ArrowUp') {
+        return
+      }
+
+      if (event.key === 'ArrowUp') {
         event.preventDefault()
         event.stopPropagation()
         setSelectedIdx((index) => Math.max(index - 1, 0))
-      } else if (event.key === 'Enter' && filtered[selectedIdx]) {
+        return
+      }
+
+      if ((event.key === 'Enter' || event.key === 'Tab') && filtered[selectedIdx]) {
         event.preventDefault()
         event.stopPropagation()
         executeItem(filtered[selectedIdx])
-      } else if (event.key === 'Escape') {
+        return
+      }
+
+      if (event.key === 'Escape') {
         event.preventDefault()
         onClose()
       }
     }
+
     document.addEventListener('keydown', handleKeyDown, true)
-    return () => document.removeEventListener('keydown', handleKeyDown, true)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true)
+    }
   }, [filtered, selectedIdx, executeItem, onClose, slashState.active])
 
   if (filtered.length === 0) return null
@@ -190,27 +206,21 @@ export function SlashMenu({ view, slashState, onClose }: SlashMenuProps) {
   const top = openUp
     ? Math.max(viewportMargin, coords.top - estimatedHeight - 8)
     : Math.min(coords.bottom + 6, window.innerHeight - estimatedHeight - viewportMargin)
-  const left = Math.max(
-    viewportMargin,
-    Math.min(coords.left, window.innerWidth - menuWidth - viewportMargin)
-  )
+  const left = Math.max(viewportMargin, Math.min(coords.left, window.innerWidth - menuWidth - viewportMargin))
   const maxListHeight = Math.max(160, (openUp ? spaceAbove : spaceBelow) - 72)
 
-  const style: React.CSSProperties = {
-    position: 'fixed',
-    top,
-    left,
-    width: menuWidth,
-    zIndex: 99999
-  }
-
   return (
-    <div style={style} onClick={(event) => event.stopPropagation()}>
+    <div
+      style={{ position: 'fixed', top, left, width: menuWidth, zIndex: 99999 }}
+      onClick={(event) => event.stopPropagation()}
+    >
       <div className="bg-[#2d2d2d] border border-[#4a4a4a] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden">
         <div className="px-3 py-2 border-b border-[#3a3a3a]">
           <p className="text-[11px] text-[#858585] uppercase tracking-wide">Insercao Rapida</p>
           <p className="text-[12px] text-[#cccccc] mt-0.5">
-            {slashState.query ? `Filtro: /${slashState.query}` : 'Digite apos "/" para filtrar comandos'}
+            {slashState.query
+              ? `Filtro: /${slashState.query}. Enter insere o primeiro resultado.`
+              : 'Digite apos "/" para filtrar. Enter insere o primeiro resultado.'}
           </p>
         </div>
 
@@ -238,11 +248,13 @@ export function SlashMenu({ view, slashState, onClose }: SlashMenuProps) {
         </div>
 
         <div className="px-3 py-1.5 border-t border-[#3a3a3a] flex gap-3 text-[10px] text-[#777]">
-          <span><kbd className="bg-[#1a1a1a] px-1 rounded font-mono">↑↓</kbd> navegar</span>
-          <span><kbd className="bg-[#1a1a1a] px-1 rounded font-mono">Enter</kbd> inserir</span>
+          <span><kbd className="bg-[#1a1a1a] px-1 rounded font-mono">Enter</kbd> inserir primeiro</span>
+          <span><kbd className="bg-[#1a1a1a] px-1 rounded font-mono">Tab</kbd> inserir selecionado</span>
+          <span><kbd className="bg-[#1a1a1a] px-1 rounded font-mono">Up/Down</kbd> navegar (opcional)</span>
           <span><kbd className="bg-[#1a1a1a] px-1 rounded font-mono">Esc</kbd> fechar</span>
         </div>
       </div>
     </div>
   )
 }
+

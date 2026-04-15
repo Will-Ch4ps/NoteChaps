@@ -143,6 +143,8 @@ function EmptyState() {
 export function EditorPage() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastSavedScrollRef = useRef<number>(-1)
+  const modeRestoreKeyRef = useRef<string>('')
+  const restoreLockUntilRef = useRef<number>(0)
   const { tab, updateScrollPosition } = useTabsStore(
     (state) => ({
       tab: state.tabs.find((item) => item.id === state.activeTabId) ?? null,
@@ -169,10 +171,49 @@ export function EditorPage() {
     if (!tab) return
     const root = scrollRef.current
     if (!root) return
+
+    const modeKey = `${tab.id}:${tab.mode}`
+    if (modeRestoreKeyRef.current === modeKey) return
+    modeRestoreKeyRef.current = modeKey
+
     const target = Math.max(0, tab.scrollPosition || 0)
+    const apply = () => {
+      root.scrollTop = target
+      lastSavedScrollRef.current = target
+    }
+
+    restoreLockUntilRef.current = performance.now() + 260
+    apply()
+    const rafA = requestAnimationFrame(apply)
+    const rafB = requestAnimationFrame(() => requestAnimationFrame(apply))
+    const timeoutA = window.setTimeout(apply, 90)
+    const timeoutB = window.setTimeout(() => {
+      restoreLockUntilRef.current = 0
+    }, 280)
+
+    return () => {
+      cancelAnimationFrame(rafA)
+      cancelAnimationFrame(rafB)
+      window.clearTimeout(timeoutA)
+      window.clearTimeout(timeoutB)
+    }
+  }, [tab?.id, tab?.mode])
+
+  useEffect(() => {
+    if (!tab) return
+    const root = scrollRef.current
+    if (!root) return
+    if (performance.now() < restoreLockUntilRef.current) return
+
+    const target = Math.max(0, tab.scrollPosition || 0)
+    if (Math.abs(root.scrollTop - target) < 2) {
+      lastSavedScrollRef.current = target
+      return
+    }
+
     root.scrollTop = target
     lastSavedScrollRef.current = target
-  }, [tab?.id, tab?.mode, tab?.scrollPosition])
+  }, [tab?.id, tab?.scrollPosition])
 
   useEffect(() => {
     if (!tab) return
@@ -199,6 +240,7 @@ export function EditorPage() {
       data-editor-scroll-root="true"
       className="flex-1 bg-[var(--color-bg-app)] overflow-auto flex justify-center py-10"
       onScroll={(event) => {
+        if (performance.now() < restoreLockUntilRef.current) return
         const current = Math.round(event.currentTarget.scrollTop)
         if (Math.abs(current - lastSavedScrollRef.current) < 16) return
         lastSavedScrollRef.current = current
