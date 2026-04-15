@@ -1,4 +1,5 @@
 import { EditorView } from 'prosemirror-view'
+import { TextSelection } from 'prosemirror-state'
 import { schema } from '../schema'
 
 export function insertImage(view: EditorView, src: string, alt = '') {
@@ -61,8 +62,18 @@ export function insertTable(view: EditorView, rows = 3, cols = 3) {
 
 export function insertDiagram(view: EditorView, diagramCode: string) {
   const node = schema.nodes.code_block.create({ language: 'mermaid' }, schema.text(diagramCode))
-  const { tr } = view.state
-  view.dispatch(tr.replaceSelectionWith(node))
+  let tr = view.state.tr.replaceSelectionWith(node)
+  const blockStart = tr.selection.from
+  const afterNode = blockStart + node.nodeSize
+  const nextNode = tr.doc.nodeAt(afterNode)
+
+  if (!nextNode || !nextNode.isTextblock) {
+    tr = tr.insert(afterNode, schema.nodes.paragraph.create())
+  }
+
+  tr = tr.setSelection(TextSelection.create(tr.doc, afterNode + 1))
+  tr = tr.scrollIntoView()
+  view.dispatch(tr)
   view.focus()
 }
 

@@ -4,6 +4,7 @@ import { useEditorStore } from '../../../../store/editorStore'
 import { schema } from '../../../../editor/core/schema'
 import { initMermaid } from '../../../../editor/modes/nodeViews/DiagramView'
 import { detectDiagramType, DIAGRAM_TYPE_LABELS, DiagramType, getMermaidRenderCode } from '../../../../shared/mermaid'
+import { TextSelection } from 'prosemirror-state'
 import { FlowchartEditor } from './FlowchartEditor'
 import { SequenceEditor } from './SequenceEditor'
 import { ErEditor } from './ErEditor'
@@ -137,7 +138,15 @@ export function DiagramPanel() {
       return true
     })
 
-    activeView.dispatch(activeView.state.tr.replaceWith(start, end, newNode))
+    let tr = activeView.state.tr.replaceWith(start, end, newNode)
+    const afterNode = start + newNode.nodeSize
+    const nextNode = tr.doc.nodeAt(afterNode)
+    if (!nextNode || !nextNode.isTextblock) {
+      tr = tr.insert(afterNode, schema.nodes.paragraph.create())
+    }
+    tr = tr.setSelection(TextSelection.create(tr.doc, afterNode + 1))
+    tr = tr.scrollIntoView()
+    activeView.dispatch(tr)
     setActiveDiagram({ ...activeDiagram, code: normalizedCode, language: 'mermaid' })
     activeView.focus()
   }

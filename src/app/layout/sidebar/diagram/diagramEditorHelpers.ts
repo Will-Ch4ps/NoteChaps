@@ -31,6 +31,15 @@ export interface FlowNode {
   textColor?: string
 }
 export interface FlowEdge { from: string; to: string; label: string; style: '-->' | '--->' | '-.->' | '==>' }
+export interface FlowGroup {
+  id: string
+  label: string
+  parentId?: string
+  nodeIds: string[]
+  fill?: string
+  stroke?: string
+  textColor?: string
+}
 
 export const SHAPE_OPTIONS: Array<{ value: FlowShape; icon: string; label: string }> = [
   { value: 'rect',          icon: '▭', label: 'Retângulo' },
@@ -105,14 +114,77 @@ function shapeFromOpener(opener: string): FlowShape {
  * definition. Edges on lines that also define inline nodes are handled by
  * extracting the node definitions from each side of the arrow.
  */
-export function parseFlowchart(code: string): { direction: string; nodes: FlowNode[]; edges: FlowEdge[] } {
+function splitEdgeEndpoints(segment: string): string[] {
+  const out: string[] = []
+  let current = ''
+  let depth = 0
+  let inQuote = false
+
+  for (const ch of segment) {
+    if (ch === '"') {
+      inQuote = !inQuote
+      current += ch
+      continue
+    }
+    if (!inQuote) {
+      if (ch === '[' || ch === '(' || ch === '{') depth += 1
+      if (ch === ']' || ch === ')' || ch === '}') depth = Math.max(0, depth - 1)
+      if (ch === '&' && depth === 0) {
+        if (current.trim()) out.push(current.trim())
+        current = ''
+        continue
+      }
+    }
+    current += ch
+  }
+
+  if (current.trim()) out.push(current.trim())
+  return out
+}
+
+function parseSubgraphHeader(line: string): { id: string; label: string } | null {
+  const m = line.match(/^subgraph\s+([A-Za-z0-9_]+)(?:\s*\[\s*(?:"([^"]+)"|([^\]]+))\s*\])?$/i)
+  if (!m) return null
+  const id = m[1]
+  const label = (m[2] ?? m[3] ?? id).trim()
+  return { id, label }
+}
+
+export function parseFlowchart(code: string): { direction: string; nodes: FlowNode[]; edges: FlowEdge[]; groups: FlowGroup[] } {
   const lines     = code.split('\n')
   const firstLine = lines[0]?.trim() ?? ''
   const direction = /\bLR\b/.test(firstLine) ? 'LR' : /\bRL\b/.test(firstLine) ? 'RL' : /\bBT\b/.test(firstLine) ? 'BT' : 'TD'
 
   const nodes: FlowNode[]  = []
   const edges: FlowEdge[]  = []
+  const groups: FlowGroup[] = []
   const nodeIndex = new Map<string, number>()
+  const groupIndex = new Map<string, number>()
+  const groupStack: string[] = []
+
+  const upsertGroup = (id: string, label: string, parentId?: string) => {
+    const idx = groupIndex.get(id)
+    if (idx !== undefined) {
+      const prev = groups[idx]
+      groups[idx] = { ...prev, label: label || prev.label, parentId: parentId ?? prev.parentId }
+      return groups[idx]
+    }
+    const group: FlowGroup = { id, label: label || id, parentId, nodeIds: [] }
+    groupIndex.set(id, groups.length)
+    groups.push(group)
+    return group
+  }
+
+  const addNodeToCurrentGroup = (nodeId: string) => {
+    const groupId = groupStack[groupStack.length - 1]
+    if (!groupId) return
+    const idx = groupIndex.get(groupId)
+    if (idx === undefined) return
+    const group = groups[idx]
+    if (!group.nodeIds.includes(nodeId)) {
+      group.nodeIds.push(nodeId)
+    }
+  }
 
   // Extracts a node from a segment like "A[Label]" or "A([Label])" or "A{Label}" or just "A"
   const extractNodeFromSegment = (seg: string): { id: string; nodeMatch: boolean; shape: FlowShape; label: string } | null => {
@@ -131,14 +203,34 @@ export function parseFlowchart(code: string): { direction: string; nodes: FlowNo
   }
 
   const registerNode = (id: string, label: string, shape: FlowShape, explicit: boolean) => {
-    if (nodeIndex.has(id)) return
+    const idx = nodeIndex.get(id)
+    if (idx !== undefined) {
+      if (explicit) {
+        const old = nodes[idx]
+        nodes[idx] = { ...old, label, shape }
+      }
+      addNodeToCurrentGroup(id)
+      return
+    }
     nodeIndex.set(id, nodes.length)
     nodes.push({ id, label: explicit ? label : id, shape })
+    addNodeToCurrentGroup(id)
   }
 
   for (const raw of lines.slice(1)) {
     const t = raw.trim()
-    if (!t || t.startsWith('%') || t.startsWith('subgraph') || t === 'end') continue
+    if (!t || t.startsWith('%')) continue
+
+    const subgraph = parseSubgraphHeader(t)
+    if (subgraph) {
+      upsertGroup(subgraph.id, subgraph.label, groupStack[groupStack.length - 1])
+      groupStack.push(subgraph.id)
+      continue
+    }
+    if (/^end$/i.test(t)) {
+      if (groupStack.length) groupStack.pop()
+      continue
+    }
 
     // Style line: style N1 fill:#xxx,stroke:#xxx,color:#xxx
     const styleMatch = t.match(/^style\s+(\w+)\s+(.+)$/)
@@ -153,6 +245,17 @@ export function parseFlowchart(code: string): { direction: string; nodes: FlowNo
           else if (k === 'stroke') node.stroke = v
           else if (k === 'color') node.textColor = v
         })
+      } else {
+        const gidx = groupIndex.get(id)
+        if (gidx !== undefined) {
+          const group = groups[gidx]
+          rest.split(',').forEach((pair) => {
+            const [k, v] = pair.split(':').map((s) => s.trim())
+            if (k === 'fill') group.fill = v
+            else if (k === 'stroke') group.stroke = v
+            else if (k === 'color') group.textColor = v
+          })
+        }
       }
       continue
     }
@@ -161,13 +264,17 @@ export function parseFlowchart(code: string): { direction: string; nodes: FlowNo
     const em = t.match(edgeRe)
     if (em) {
       const [, fromSeg, rawArrow, pipeLabel, toSeg] = em
-      const fromNode = extractNodeFromSegment(fromSeg)
-      const toNode   = extractNodeFromSegment(toSeg)
+      const fromNodes = splitEdgeEndpoints(fromSeg)
+        .map(extractNodeFromSegment)
+        .filter((n): n is NonNullable<typeof n> => Boolean(n))
+      const toNodes = splitEdgeEndpoints(toSeg)
+        .map(extractNodeFromSegment)
+        .filter((n): n is NonNullable<typeof n> => Boolean(n))
 
-      if (fromNode) registerNode(fromNode.id, fromNode.label, fromNode.shape, fromNode.nodeMatch)
-      if (toNode)   registerNode(toNode.id, toNode.label, toNode.shape, toNode.nodeMatch)
+      for (const node of fromNodes) registerNode(node.id, node.label, node.shape, node.nodeMatch)
+      for (const node of toNodes) registerNode(node.id, node.label, node.shape, node.nodeMatch)
 
-      if (fromNode && toNode) {
+      if (fromNodes.length && toNodes.length) {
         const style: FlowEdge['style'] =
           rawArrow === '==>' ? '==>' :
           rawArrow.includes('-.') ? '-.->' :
@@ -175,7 +282,11 @@ export function parseFlowchart(code: string): { direction: string; nodes: FlowNo
         let label = pipeLabel ?? ''
         if (label.startsWith('"') && label.endsWith('"')) label = label.slice(1, -1)
         label = label.replace(/<br\s*\/?>/gi, '\n')
-        edges.push({ from: fromNode.id, to: toNode.id, label, style })
+        for (const fromNode of fromNodes) {
+          for (const toNode of toNodes) {
+            edges.push({ from: fromNode.id, to: toNode.id, label, style })
+          }
+        }
       }
       continue
     }
@@ -192,7 +303,7 @@ export function parseFlowchart(code: string): { direction: string; nodes: FlowNo
     }
   }
 
-  return { direction, nodes, edges }
+  return { direction, nodes, edges, groups }
 }
 
 // Escapes a user-entered label so it renders correctly in mermaid.
@@ -207,11 +318,62 @@ function escapeLabel(label: string): string {
   return `"${text || ' '}"`
 }
 
-export function buildFlowchart(direction: string, nodes: FlowNode[], edges: FlowEdge[]): string {
+function isValidColor(value?: string): boolean {
+  return Boolean(value && value.trim())
+}
+
+export function buildFlowchart(direction: string, nodes: FlowNode[], edges: FlowEdge[], groups: FlowGroup[] = []): string {
   const lines = [`flowchart ${direction}`]
-  for (const n of nodes) {
-    lines.push(`    ${n.id}${SHAPE_OPEN(n.shape)}${escapeLabel(n.label)}${SHAPE_CLOSE(n.shape)}`)
+  const nodeById = new Map(nodes.map((n) => [n.id, n] as const))
+
+  const safeGroups = groups
+    .filter((group) => group.id.trim().length > 0)
+    .map((group) => ({
+      ...group,
+      id: group.id.trim(),
+      label: (group.label || group.id).trim(),
+      nodeIds: Array.from(new Set(group.nodeIds.filter((id) => nodeById.has(id))))
+    }))
+
+  const childrenByParent = new Map<string, FlowGroup[]>()
+  const roots: FlowGroup[] = []
+  for (const group of safeGroups) {
+    const parentId = group.parentId && group.parentId !== group.id ? group.parentId : undefined
+    if (parentId && safeGroups.some((g) => g.id === parentId)) {
+      const arr = childrenByParent.get(parentId) ?? []
+      arr.push(group)
+      childrenByParent.set(parentId, arr)
+    } else {
+      roots.push(group)
+    }
   }
+
+  const renderNode = (node: FlowNode, indent = '    ') => {
+    lines.push(`${indent}${node.id}${SHAPE_OPEN(node.shape)}${escapeLabel(node.label)}${SHAPE_CLOSE(node.shape)}`)
+  }
+
+  const renderedNodeIds = new Set<string>()
+  const emitGroup = (group: FlowGroup, indent = '    ', seen = new Set<string>()) => {
+    if (seen.has(group.id)) return
+    seen.add(group.id)
+    lines.push(`${indent}subgraph ${group.id}[${escapeLabel(group.label || group.id)}]`)
+    const children = childrenByParent.get(group.id) ?? []
+    for (const child of children) emitGroup(child, `${indent}    `, new Set(seen))
+    for (const nodeId of group.nodeIds) {
+      const node = nodeById.get(nodeId)
+      if (!node || renderedNodeIds.has(nodeId)) continue
+      renderNode(node, `${indent}    `)
+      renderedNodeIds.add(nodeId)
+    }
+    lines.push(`${indent}end`)
+  }
+
+  for (const root of roots) emitGroup(root)
+  for (const node of nodes) {
+    if (renderedNodeIds.has(node.id)) continue
+    renderNode(node)
+  }
+
   for (const e of edges) {
     const label = e.label ? `|${escapeLabel(e.label)}|` : ''
     lines.push(`    ${e.from} ${e.style}${label} ${e.to}`)
@@ -223,6 +385,13 @@ export function buildFlowchart(direction: string, nodes: FlowNode[], edges: Flow
     if (n.stroke) parts.push(`stroke:${n.stroke},stroke-width:2px`)
     if (n.textColor) parts.push(`color:${n.textColor}`)
     if (parts.length) lines.push(`    style ${n.id} ${parts.join(',')}`)
+  }
+  for (const g of safeGroups) {
+    const parts: string[] = []
+    if (isValidColor(g.fill)) parts.push(`fill:${g.fill}`)
+    if (isValidColor(g.stroke)) parts.push(`stroke:${g.stroke}`)
+    if (isValidColor(g.textColor)) parts.push(`color:${g.textColor}`)
+    if (parts.length) lines.push(`    style ${g.id} ${parts.join(',')}`)
   }
   return lines.join('\n')
 }
