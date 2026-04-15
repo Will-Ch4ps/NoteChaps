@@ -8,6 +8,8 @@ export interface ActiveDiagram {
   pos: number
   language?: string
   sessionId: number
+  width: number
+  height: number
 }
 
 export interface ActiveTable {

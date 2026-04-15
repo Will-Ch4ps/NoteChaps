@@ -4,6 +4,14 @@ import {
   defaultMarkdownSerializer
 } from 'prosemirror-markdown'
 import { Node } from 'prosemirror-model'
+import { isMermaidBlock } from '../../../shared/mermaid'
+import {
+  DEFAULT_DIAGRAM_LAYOUT,
+  buildDiagramLayoutMeta,
+  clampDiagramHeight,
+  clampDiagramWidth,
+  stripDiagramLayoutMeta
+} from '../../../shared/diagramLayout'
 
 const defaultNodes = defaultMarkdownSerializer.nodes
 const defaultMarks = defaultMarkdownSerializer.marks
@@ -23,7 +31,16 @@ const customNodes: Record<
     const params = (node.attrs.language as string) || (node.attrs.params as string) || ''
     state.write('```' + params + '\n')
     // Strip trailing newline para evitar linha extra acumulativa
-    const content = node.textContent.replace(/\n$/, '')
+    let content = node.textContent.replace(/\n$/, '')
+
+    if (isMermaidBlock(params, content)) {
+      const clean = stripDiagramLayoutMeta(content)
+      const width = clampDiagramWidth(node.attrs.diagramWidth)
+      const height = clampDiagramHeight(node.attrs.diagramHeight)
+      const hasCustomLayout = width !== DEFAULT_DIAGRAM_LAYOUT.width || height !== DEFAULT_DIAGRAM_LAYOUT.height
+      content = hasCustomLayout ? `${buildDiagramLayoutMeta({ width, height })}\n${clean}` : clean
+    }
+
     state.text(content, false)
     state.ensureNewLine()
     state.write('```')

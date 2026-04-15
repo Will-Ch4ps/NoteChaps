@@ -1,6 +1,7 @@
 import { EditorView } from 'prosemirror-view'
 import { TextSelection } from 'prosemirror-state'
 import { schema } from '../schema'
+import { DEFAULT_DIAGRAM_LAYOUT } from '../../../shared/diagramLayout'
 
 export function insertImage(view: EditorView, src: string, alt = '') {
   const node = schema.nodes.image.create({ src, alt })
@@ -60,10 +61,23 @@ export function insertTable(view: EditorView, rows = 3, cols = 3) {
   view.focus()
 }
 
-export function insertDiagram(view: EditorView, diagramCode: string) {
-  const node = schema.nodes.code_block.create({ language: 'mermaid' }, schema.text(diagramCode))
-  const insertFrom = view.state.selection.from
-  let tr = view.state.tr.replaceSelectionWith(node)
+export function insertDiagram(view: EditorView, diagramCode: string, atPos?: number) {
+  const node = schema.nodes.code_block.create(
+    {
+      language: 'mermaid',
+      diagramWidth: DEFAULT_DIAGRAM_LAYOUT.width,
+      diagramHeight: DEFAULT_DIAGRAM_LAYOUT.height
+    },
+    schema.text(diagramCode)
+  )
+  const baseTr = view.state.tr
+  const trWithSelection =
+    typeof atPos === 'number'
+      ? baseTr.setSelection(TextSelection.near(baseTr.doc.resolve(Math.max(0, Math.min(atPos, baseTr.doc.content.size))), 1))
+      : baseTr
+
+  const insertFrom = trWithSelection.selection.from
+  let tr = trWithSelection.replaceSelectionWith(node)
   const afterNode = insertFrom + node.nodeSize
   const nextNode = tr.doc.nodeAt(afterNode)
 
@@ -71,7 +85,7 @@ export function insertDiagram(view: EditorView, diagramCode: string) {
     tr = tr.insert(afterNode, schema.nodes.paragraph.create())
   }
 
-  tr = tr.setSelection(TextSelection.create(tr.doc, afterNode + 1))
+  tr = tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(afterNode + 1, tr.doc.content.size)), 1))
   tr = tr.scrollIntoView()
   view.dispatch(tr)
   view.focus()

@@ -1,9 +1,11 @@
 import mermaid from 'mermaid'
 import { Node as PMNode } from 'prosemirror-model'
+import { NodeSelection, TextSelection } from 'prosemirror-state'
 import { EditorView, NodeView } from 'prosemirror-view'
 import { schema } from '../../core/schema'
 import { useEditorStore } from '../../../store/editorStore'
 import { getMermaidRenderCode, isMermaidBlock } from '../../../shared/mermaid'
+import { resolveDiagramLayout } from '../../../shared/diagramLayout'
 
 let mermaidInitialized = false
 let diagramCounter = 0
@@ -99,6 +101,7 @@ export class DiagramView implements NodeView {
     this.onDomMouseDown = (event: MouseEvent) => {
       if ((event.target as Element).closest('.diagram-btn-bar')) return
       if (event.button !== 0) return
+      this.selectNodeInDocument()
       this.activateInSidebar(false)
     }
     this.dom.addEventListener('mousedown', this.onDomMouseDown)
@@ -217,7 +220,31 @@ export class DiagramView implements NodeView {
       this.deleteSelf()
     })
 
-    buttonBar.append(editBtn, zoomOutBtn, zoomResetBtn, zoomInBtn, copyBtn, deleteBtn)
+    const continueBtn = document.createElement('button')
+    continueBtn.className = 'diagram-btn'
+    continueBtn.textContent = 'Text'
+    continueBtn.title = 'Continuar digitando abaixo do diagrama'
+    continueBtn.addEventListener('mousedown', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      this.moveCursorAfter()
+    })
+
+    const moveBtn = document.createElement('button')
+    moveBtn.className = 'diagram-btn diagram-btn-move'
+    moveBtn.textContent = 'Move'
+    moveBtn.title = 'Arraste para mover o diagrama no documento'
+    moveBtn.setAttribute('data-drag-handle', 'true')
+    moveBtn.draggable = true
+    moveBtn.addEventListener('mousedown', (event) => {
+      event.stopPropagation()
+      this.selectNodeInDocument()
+    })
+    moveBtn.addEventListener('dragstart', () => {
+      this.selectNodeInDocument()
+    })
+
+    buttonBar.append(editBtn, moveBtn, continueBtn, zoomOutBtn, zoomResetBtn, zoomInBtn, copyBtn, deleteBtn)
 
     this.dom.appendChild(this.renderArea)
     this.dom.appendChild(buttonBar)
@@ -245,6 +272,34 @@ export class DiagramView implements NodeView {
     this.view.focus()
   }
 
+  private selectNodeInDocument() {
+    const pos = this.getPos()
+    if (pos === undefined) return
+    const { state, dispatch } = this.view
+    const selected = state.selection
+    if (selected instanceof NodeSelection && selected.from === pos) return
+    dispatch(state.tr.setSelection(NodeSelection.create(state.doc, pos)))
+    this.view.focus()
+  }
+
+  private moveCursorAfter() {
+    const pos = this.getPos()
+    if (pos === undefined) return
+    const node = this.view.state.doc.nodeAt(pos)
+    if (!node) return
+
+    const afterNode = pos + node.nodeSize
+    let tr = this.view.state.tr
+    const next = tr.doc.nodeAt(afterNode)
+    if (!next || !next.isTextblock) {
+      tr = tr.insert(afterNode, schema.nodes.paragraph.create())
+    }
+    tr = tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(afterNode + 1, tr.doc.content.size)), 1))
+    tr = tr.scrollIntoView()
+    this.view.dispatch(tr)
+    this.view.focus()
+  }
+
   private openEditor() {
     this.activateInSidebar(true)
   }
@@ -256,12 +311,21 @@ export class DiagramView implements NodeView {
     const sourceNode = liveNode && liveNode.type === schema.nodes.code_block ? liveNode : this.node
     const lang = (sourceNode.attrs.language as string) || (sourceNode.attrs.params as string) || ''
     const renderCode = getMermaidRenderCode(lang, sourceNode.textContent)
+    const layout = resolveDiagramLayout(
+      {
+        width: sourceNode.attrs.diagramWidth as number | undefined,
+        height: sourceNode.attrs.diagramHeight as number | undefined
+      },
+      sourceNode.textContent
+    )
 
     useEditorStore.getState().setActiveDiagram({
       code: renderCode,
       pos,
       language: lang,
-      sessionId: ++activeDiagramSessionCounter
+      sessionId: ++activeDiagramSessionCounter,
+      width: layout.width,
+      height: layout.height
     })
     if (openSidebar) {
       import('../../../store/uiStore').then(({ useUIStore }) => {
@@ -275,6 +339,15 @@ export class DiagramView implements NodeView {
   async renderDiagram() {
     this.resetView()
     const lang = (this.node.attrs.language as string) || (this.node.attrs.params as string) || ''
+    const layout = resolveDiagramLayout(
+      {
+        width: this.node.attrs.diagramWidth as number | undefined,
+        height: this.node.attrs.diagramHeight as number | undefined
+      },
+      this.node.textContent
+    )
+    this.svgContainer.style.maxWidth = `${layout.width}%`
+    this.renderArea.style.maxHeight = `${layout.height}px`
     const code = getMermaidRenderCode(lang, this.node.textContent).trim()
 
     if (!code) {
@@ -317,6 +390,14 @@ export class DiagramView implements NodeView {
     if (this.renderTimeout) clearTimeout(this.renderTimeout)
     this.renderTimeout = setTimeout(() => this.renderDiagram(), 100)
     return true
+  }
+
+  selectNode() {
+    this.dom.classList.add('diagram-selected')
+  }
+
+  deselectNode() {
+    this.dom.classList.remove('diagram-selected')
   }
 
   stopEvent() {

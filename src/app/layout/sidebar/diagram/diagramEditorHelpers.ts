@@ -3,7 +3,12 @@
 export type DiagramType = 'flowchart' | 'sequence' | 'er' | 'gantt' | 'unknown'
 
 export function detectDiagramType(code: string): DiagramType {
-  const first = code.trim().split('\n')[0]?.toLowerCase() ?? ''
+  const first =
+    code
+      .split('\n')
+      .map((line) => line.trim().toLowerCase())
+      .find((line) => line && !line.startsWith('%'))
+    ?? ''
   if (first.startsWith('flowchart') || first.startsWith('graph')) return 'flowchart'
   if (first.startsWith('sequencediagram')) return 'sequence'
   if (first.startsWith('erdiagram')) return 'er'
@@ -151,9 +156,13 @@ function parseSubgraphHeader(line: string): { id: string; label: string } | null
 }
 
 export function parseFlowchart(code: string): { direction: string; nodes: FlowNode[]; edges: FlowEdge[]; groups: FlowGroup[] } {
-  const lines     = code.split('\n')
-  const firstLine = lines[0]?.trim() ?? ''
-  const direction = /\bLR\b/.test(firstLine) ? 'LR' : /\bRL\b/.test(firstLine) ? 'RL' : /\bBT\b/.test(firstLine) ? 'BT' : 'TD'
+  const lines = code.split('\n')
+  const firstDirective =
+    lines
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith('%') && /^(flowchart|graph)\b/i.test(line))
+    ?? ''
+  const direction = /\bLR\b/.test(firstDirective) ? 'LR' : /\bRL\b/.test(firstDirective) ? 'RL' : /\bBT\b/.test(firstDirective) ? 'BT' : 'TD'
 
   const nodes: FlowNode[]  = []
   const edges: FlowEdge[]  = []
@@ -217,9 +226,14 @@ export function parseFlowchart(code: string): { direction: string; nodes: FlowNo
     addNodeToCurrentGroup(id)
   }
 
-  for (const raw of lines.slice(1)) {
+  let consumedDirective = false
+  for (const raw of lines) {
     const t = raw.trim()
     if (!t || t.startsWith('%')) continue
+    if (!consumedDirective && /^(flowchart|graph)\b/i.test(t)) {
+      consumedDirective = true
+      continue
+    }
 
     const subgraph = parseSubgraphHeader(t)
     if (subgraph) {

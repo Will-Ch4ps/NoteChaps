@@ -16,7 +16,6 @@ import { InsertImageModal } from './toolbar/InsertImageModal'
 import { InsertLinkModal } from './toolbar/InsertLinkModal'
 import { InsertTableModal } from './toolbar/InsertTableModal'
 import { DiagramPickerModal } from './toolbar/DiagramPickerModal'
-import { TextSelection } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 
 type DiagramInsertTarget = {
@@ -305,13 +304,8 @@ export function Toolbar() {
             const fallbackView = useEditorStore.getState().activeView
             const view = diagramInsertTarget?.view ?? fallbackView
             if (!view) return
-            const maxPos = view.state.doc.content.size
-            const basePos = diagramInsertTarget?.from ?? view.state.selection.from
-            const targetPos = Math.max(1, Math.min(basePos, maxPos))
-            const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, targetPos))
-            view.dispatch(tr)
             view.focus()
-            insertDiagram(view, code)
+            insertDiagram(view, code, diagramInsertTarget?.from)
           }}
           onClose={() => {
             setShowDiagramModal(false)

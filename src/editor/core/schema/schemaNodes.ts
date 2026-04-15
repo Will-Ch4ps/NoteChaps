@@ -1,5 +1,7 @@
 import { schema as markdownSchema } from 'prosemirror-markdown'
 import { addListNodes } from 'prosemirror-schema-list'
+import { isMermaidBlock } from '../../../shared/mermaid'
+import { parseDiagramLayoutMeta } from '../../../shared/diagramLayout'
 
 /**
  * Nodes estendidos do schema Markdown.
@@ -199,10 +201,13 @@ export const schemaNodes = addListNodes(markdownSchema.spec.nodes, 'paragraph bl
       group: 'block',
       code: true,
       defining: true,
+      draggable: true,
       marks: '',
       attrs: {
         params: { default: '' },
-        language: { default: '' }
+        language: { default: '' },
+        diagramWidth: { default: null },
+        diagramHeight: { default: null }
       },
       parseDOM: [{
         tag: 'pre',
@@ -211,7 +216,15 @@ export const schemaNodes = addListNodes(markdownSchema.spec.nodes, 'paragraph bl
           const el = dom as HTMLElement
           const code = el.querySelector('code')
           const lang = code?.getAttribute('data-language') || code?.className?.replace('language-', '') || ''
-          return { params: lang, language: lang }
+          const content = code?.textContent ?? ''
+          const layout = parseDiagramLayoutMeta(content)
+          const mermaid = isMermaidBlock(lang, content)
+          return {
+            params: lang,
+            language: lang,
+            diagramWidth: mermaid ? (layout.width ?? null) : null,
+            diagramHeight: mermaid ? (layout.height ?? null) : null
+          }
         }
       }],
       toDOM(node) {
@@ -220,6 +233,12 @@ export const schemaNodes = addListNodes(markdownSchema.spec.nodes, 'paragraph bl
         if (lang) {
           codeAttrs['data-language'] = lang
           codeAttrs.class = `language-${lang}`
+        }
+        if (typeof node.attrs.diagramWidth === 'number') {
+          codeAttrs['data-diagram-width'] = String(node.attrs.diagramWidth)
+        }
+        if (typeof node.attrs.diagramHeight === 'number') {
+          codeAttrs['data-diagram-height'] = String(node.attrs.diagramHeight)
         }
         return ['pre', ['code', codeAttrs, 0]]
       }

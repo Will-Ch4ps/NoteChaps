@@ -706,6 +706,10 @@ li[data-type="task_item"][data-checked="true"] .task-content p {
   overflow: hidden;
   user-select: none;
 }
+.diagram-view.diagram-selected {
+  border-color: #4a9eff;
+  box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.3);
+}
 .diagram-rendered {
   padding: 24px 20px;
   min-height: 120px;
@@ -769,6 +773,12 @@ li[data-type="task_item"][data-checked="true"] .task-content p {
 .diagram-btn-primary { color: #ccc; }
 .diagram-btn-danger  { color: #ff6b6b; }
 .diagram-btn-danger:hover { background: rgba(255,107,107,0.15) !important; color: #ff6b6b !important; border-color: #ff6b6b !important; }
+.diagram-btn-move {
+  cursor: grab;
+}
+.diagram-btn-move:active {
+  cursor: grabbing;
+}
 .diagram-loading { color: #666; font-size: 12px; font-style: italic; padding: 12px; }
 .diagram-empty   { color: #555; font-size: 12px; font-style: italic; padding: 24px; text-align: center; }
 .diagram-error {
