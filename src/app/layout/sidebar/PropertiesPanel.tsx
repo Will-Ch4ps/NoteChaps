@@ -5,9 +5,9 @@ import { formatDate } from '../../../shared/utils'
 import { parseFrontmatter, serializeFrontmatter } from '../../../shared/utils/frontmatter'
 import { HeadingEntry } from '../../../shared/types'
 import { TextSelection } from 'prosemirror-state'
-import { Node as PMNode } from 'prosemirror-model'
 
 const RAW_JUMP_EVENT = 'notechaps:raw-jump-to-offset'
+const scrollAnimations = new WeakMap<HTMLElement, number>()
 
 function collectRawHeadings(rawContent: string): Array<{ level: number; text: string; from: number; to: number }> {
   const headings: Array<{ level: number; text: string; from: number; to: number }> = []
@@ -30,18 +30,35 @@ function collectRawHeadings(rawContent: string): Array<{ level: number; text: st
   return headings
 }
 
-function collectViewHeadings(doc: PMNode): HeadingEntry[] {
-  const headings: HeadingEntry[] = []
-  doc.descendants((node, pos) => {
-    if (node.type.name !== 'heading') return true
-    headings.push({
-      level: Number(node.attrs.level ?? 1),
-      text: node.textContent,
-      pos
-    })
-    return true
-  })
-  return headings
+function animateScrollTop(scrollRoot: HTMLElement, targetTop: number, duration = 260) {
+  const startTop = scrollRoot.scrollTop
+  const endTop = Math.max(0, targetTop)
+  if (Math.abs(endTop - startTop) < 1) {
+    scrollRoot.scrollTop = endTop
+    return
+  }
+
+  const prevFrame = scrollAnimations.get(scrollRoot)
+  if (prevFrame) {
+    cancelAnimationFrame(prevFrame)
+  }
+
+  const startedAt = performance.now()
+  const step = (now: number) => {
+    const progress = Math.min(1, (now - startedAt) / duration)
+    const eased = 1 - Math.pow(1 - progress, 3)
+    scrollRoot.scrollTop = startTop + (endTop - startTop) * eased
+    if (progress < 1) {
+      const frame = requestAnimationFrame(step)
+      scrollAnimations.set(scrollRoot, frame)
+      return
+    }
+    scrollRoot.scrollTop = endTop
+    scrollAnimations.delete(scrollRoot)
+  }
+
+  const frame = requestAnimationFrame(step)
+  scrollAnimations.set(scrollRoot, frame)
 }
 
 export function PropertiesPanel() {
@@ -101,13 +118,8 @@ export function PropertiesPanel() {
 
     if (!activeView) return
     try {
-      const liveHeadings = collectViewHeadings(activeView.state.doc)
-      const fallback = liveHeadings.find((item) => item.level === heading.level && item.text === heading.text)
-      const targetHeading = liveHeadings[headingIndex] ?? fallback
-      if (!targetHeading) return
-
       const maxPos = activeView.state.doc.content.size
-      const targetPos = Math.max(1, Math.min(targetHeading.pos + 1, maxPos))
+      const targetPos = Math.max(1, Math.min(heading.pos + 1, maxPos))
       const tr = activeView.state.tr.setSelection(TextSelection.near(activeView.state.doc.resolve(targetPos), 1))
       activeView.dispatch(tr)
       activeView.focus()
@@ -121,19 +133,24 @@ export function PropertiesPanel() {
           dom.node.nodeType === 1
             ? (dom.node as HTMLElement)
             : (dom.node.parentElement as HTMLElement | null)
-        const targetEl = baseEl?.closest('h1,h2,h3,h4,h5,h6') ?? baseEl
-        if (targetEl) {
-          const targetRect = targetEl.getBoundingClientRect()
+        const nodeEl = activeView.nodeDOM(heading.pos)
+        const targetEl =
+          (nodeEl instanceof HTMLElement ? nodeEl : null)?.closest('h1,h2,h3,h4,h5,h6') ??
+          baseEl?.closest('h1,h2,h3,h4,h5,h6') ??
+          baseEl
+
+        if (targetEl instanceof HTMLElement) {
           const rootRect = scrollRoot.getBoundingClientRect()
+          const targetRect = targetEl.getBoundingClientRect()
           const nextTop = scrollRoot.scrollTop + (targetRect.top - rootRect.top) - scrollRoot.clientHeight * 0.2
-          scrollRoot.scrollTop = Math.max(0, nextTop)
+          animateScrollTop(scrollRoot, nextTop)
           return
         }
 
         const coords = activeView.coordsAtPos(targetPos)
         const rootRect = scrollRoot.getBoundingClientRect()
         const nextTop = scrollRoot.scrollTop + (coords.top - rootRect.top) - scrollRoot.clientHeight * 0.2
-        scrollRoot.scrollTop = Math.max(0, nextTop)
+        animateScrollTop(scrollRoot, nextTop)
       })
     } catch { /* ignore */ }
   }, [activeView, tab])

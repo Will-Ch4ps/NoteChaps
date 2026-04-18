@@ -4,6 +4,38 @@ import { useTabsStore } from '../../store/tabsStore'
 import { useUIStore } from '../../store/uiStore'
 
 const RAW_JUMP_EVENT = 'notechaps:raw-jump-to-offset'
+const rawScrollAnimations = new WeakMap<HTMLElement, number>()
+
+function animateScrollTop(scrollRoot: HTMLElement, targetTop: number, duration = 220) {
+  const startTop = scrollRoot.scrollTop
+  const endTop = Math.max(0, targetTop)
+  if (Math.abs(endTop - startTop) < 1) {
+    scrollRoot.scrollTop = endTop
+    return
+  }
+
+  const prevFrame = rawScrollAnimations.get(scrollRoot)
+  if (prevFrame) {
+    cancelAnimationFrame(prevFrame)
+  }
+
+  const startedAt = performance.now()
+  const step = (now: number) => {
+    const progress = Math.min(1, (now - startedAt) / duration)
+    const eased = 1 - Math.pow(1 - progress, 3)
+    scrollRoot.scrollTop = startTop + (endTop - startTop) * eased
+    if (progress < 1) {
+      const frame = requestAnimationFrame(step)
+      rawScrollAnimations.set(scrollRoot, frame)
+      return
+    }
+    scrollRoot.scrollTop = endTop
+    rawScrollAnimations.delete(scrollRoot)
+  }
+
+  const frame = requestAnimationFrame(step)
+  rawScrollAnimations.set(scrollRoot, frame)
+}
 
 interface RawModeProps {
   tabId: string
@@ -65,7 +97,7 @@ export function RawMode({ tabId, initialContent }: RawModeProps) {
       const lineHeight = parseFloat(window.getComputedStyle(textarea).lineHeight || '') || rawFontSize * 1.6
       const lineNumber = textarea.value.slice(0, from).split('\n').length - 1
       const targetTop = textarea.offsetTop + lineNumber * lineHeight - scrollRoot.clientHeight * 0.35
-      scrollRoot.scrollTop = Math.max(0, targetTop)
+      animateScrollTop(scrollRoot, targetTop)
     }
 
     window.addEventListener(RAW_JUMP_EVENT, onJump as EventListener)
