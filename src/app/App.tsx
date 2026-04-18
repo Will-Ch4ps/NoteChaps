@@ -14,9 +14,13 @@ import { useTabsStore } from '../store/tabsStore'
 import { useEditorStore } from '../store/editorStore'
 import { useFilesStore } from '../store/filesStore'
 import { FileSystemService } from '../filesystem/FileSystemService'
+import { MarkdownConverter } from '../filesystem/converters/MarkdownConverter'
 import { FileExt } from '../shared/types'
 import { base64ToText, textToBase64, basename, getFileExt, debounce } from '../shared/utils'
 import { AUTO_SAVE_DELAY } from '../shared/constants'
+import { buildNewDocumentContent } from '../shared/documents/newDocument'
+import { parseFrontmatter, serializeFrontmatter } from '../shared/utils/frontmatter'
+import { EditorView } from 'prosemirror-view'
 
 export function App() {
   const { sidebarLeftOpen, sidebarRightOpen, toggleQuickSearch, openFindBar, toggleShortcuts, theme } = useUIStore()
@@ -46,9 +50,10 @@ export function App() {
 
     let untitledCounter = 1
 
-    const handleNewFile = () => {
-      const name = `sem título ${untitledCounter++}.md`
-      openTab(`untitled:${name}`, name, 'md', '')
+    const handleNewFile = async () => {
+      const name = `sem titulo ${untitledCounter++}.md`
+      const initialContent = buildNewDocumentContent(name.replace(/\.md$/i, ''))
+      openTab(`untitled:${name}`, name, 'md', initialContent)
     }
 
     const handleOpenFile = async () => {
@@ -56,6 +61,12 @@ export function App() {
       if (!data) return
       const content = base64ToText(data.content)
       openTab(data.path, data.name, data.ext as FileExt, content)
+    }
+
+    const composeVisualMarkdown = (rawWithMeta: string, view: EditorView) => {
+      const { meta } = parseFrontmatter(rawWithMeta)
+      const body = MarkdownConverter.fromDoc(view.state.doc, { lineMode: 'markdown' })
+      return serializeFrontmatter(meta, body)
     }
 
     const handleSave = async () => {
@@ -67,7 +78,10 @@ export function App() {
         let newPath: string | null = null;
 
         if (activeView && tab.mode === 'visual') {
-          newPath = await FileSystemService.saveAs(activeView.state.doc, tab.title)
+          const markdown = composeVisualMarkdown(tab.rawContent, activeView)
+          const base64 = textToBase64(markdown)
+          newPath = await window.electronAPI.saveFileAs(base64, tab.title)
+          useTabsStore.getState().updateRawContent(tab.id, markdown)
         } else {
           const base64 = textToBase64(tab.rawContent)
           newPath = await window.electronAPI.saveFileAs(base64, tab.title)
@@ -84,7 +98,9 @@ export function App() {
       if (tab.mode === 'visual') {
         const { activeView } = useEditorStore.getState()
         if (activeView) {
-          await FileSystemService.saveDoc(tab.filePath, activeView.state.doc)
+          const markdown = composeVisualMarkdown(tab.rawContent, activeView)
+          await FileSystemService.saveRaw(tab.filePath, markdown)
+          useTabsStore.getState().updateRawContent(tab.id, markdown)
           useTabsStore.getState().markDirty(tab.id, false)
         }
       } else {
@@ -110,7 +126,10 @@ export function App() {
       let newPath: string | null = null;
 
       if (activeView && tab.mode === 'visual') {
-        newPath = await FileSystemService.saveAs(activeView.state.doc, tab.title)
+        const markdown = composeVisualMarkdown(tab.rawContent, activeView)
+        const base64 = textToBase64(markdown)
+        newPath = await window.electronAPI.saveFileAs(base64, tab.title)
+        useTabsStore.getState().updateRawContent(tab.id, markdown)
       } else {
         const base64 = textToBase64(tab.rawContent)
         newPath = await window.electronAPI.saveFileAs(base64, tab.title)
@@ -159,7 +178,7 @@ export function App() {
         e.preventDefault()
         cycleTabs(e.shiftKey ? -1 : 1)
       }
-      if (mod && e.key === 'n') { e.preventDefault(); handleNewFile(); }
+      if (mod && !e.shiftKey && e.key === 'n') { e.preventDefault(); handleNewFile(); }
       if (mod && !e.shiftKey && e.key === 'o') { e.preventDefault(); handleOpenFile(); }
       if (mod && e.key === 'e') {
         e.preventDefault()
@@ -266,3 +285,4 @@ export function App() {
     </div>
   )
 }
+

@@ -8,6 +8,7 @@ import { useTabsStore } from '../../store/tabsStore'
 import { useDialog } from '../components/Dialog'
 import { FileTreeNode } from './sidebar/FileTreeNode'
 import { SidebarContextMenu } from './sidebar/SidebarContextMenu'
+import { buildNewDocumentContent } from '../../shared/documents/newDocument'
 
 interface CtxMenuState {
   visible: boolean
@@ -192,7 +193,7 @@ export function SidebarLeft() {
     try {
       const newName = `novo-arquivo-${Date.now().toString().slice(-4)}.md`
       const newPath = await FileSystemService.createFile(dir, newName)
-      const initialContent = '# Novo Arquivo\n\n'
+      const initialContent = buildNewDocumentContent(newName.replace(/\.md$/i, ''))
       await FileSystemService.saveRaw(newPath, initialContent)
       await refreshTree()
       setRenamingPath(newPath)

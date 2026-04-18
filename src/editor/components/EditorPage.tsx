@@ -12,6 +12,7 @@ import { FileExt } from '../../shared/types'
 import { base64ToText } from '../../shared/utils'
 import { PAGE_MARGINS } from '../../shared/constants'
 import { NoteChapsMark } from '../../app/components/NoteChapsMark'
+import { parseFrontmatter } from '../../shared/utils/frontmatter'
 
 function EmptyState() {
   const { appActions } = useEditorStore()
@@ -164,7 +165,8 @@ export function EditorPage() {
   const editorState = useMemo(() => {
     if (!tab) return null
     if (tab.editorState) return tab.editorState
-    return createEditorState(tab.rawContent ? MarkdownConverter.toDoc(tab.rawContent) : undefined)
+    const { body } = parseFrontmatter(tab.rawContent)
+    return createEditorState(body ? MarkdownConverter.toDoc(body) : undefined)
   }, [tab])
 
   useLayoutEffect(() => {

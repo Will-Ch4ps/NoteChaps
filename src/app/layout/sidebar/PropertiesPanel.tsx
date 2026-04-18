@@ -1,10 +1,10 @@
 import React, { useCallback, useMemo, useState } from 'react'
+import { TextSelection } from 'prosemirror-state'
 import { useEditorStore } from '../../../store/editorStore'
 import { useTabsStore } from '../../../store/tabsStore'
+import { HeadingEntry } from '../../../shared/types'
 import { formatDate } from '../../../shared/utils'
 import { parseFrontmatter, serializeFrontmatter } from '../../../shared/utils/frontmatter'
-import { HeadingEntry } from '../../../shared/types'
-import { TextSelection } from 'prosemirror-state'
 
 const RAW_JUMP_EVENT = 'notechaps:raw-jump-to-offset'
 const scrollAnimations = new WeakMap<HTMLElement, number>()
@@ -39,9 +39,7 @@ function animateScrollTop(scrollRoot: HTMLElement, targetTop: number, duration =
   }
 
   const prevFrame = scrollAnimations.get(scrollRoot)
-  if (prevFrame) {
-    cancelAnimationFrame(prevFrame)
-  }
+  if (prevFrame) cancelAnimationFrame(prevFrame)
 
   const startedAt = performance.now()
   const step = (now: number) => {
@@ -65,8 +63,8 @@ export function PropertiesPanel() {
   const { docProperties, activeView, selectionProperties } = useEditorStore()
   const { getActiveTab, updateRawContent, markDirty } = useTabsStore()
   const tab = getActiveTab()
-  const [newTag, setNewTag]     = useState('')
-  const [addingTag, setAdding]  = useState(false)
+  const [newTag, setNewTag] = useState('')
+  const [addingTag, setAddingTag] = useState(false)
 
   const { meta: frontmatter } = useMemo(() => {
     if (!tab?.rawContent) return { meta: {}, body: '' }
@@ -89,15 +87,16 @@ export function PropertiesPanel() {
   }, [tab, updateRawContent, markDirty])
 
   const addTag = useCallback((tag: string) => {
-    const t = tag.trim().toLowerCase().replace(/\s+/g, '-')
-    if (!t || tags.includes(t)) return
-    saveFrontmatter({ ...frontmatter, tags: [...tags, t] })
-    setNewTag(''); setAdding(false)
+    const normalized = tag.trim().toLowerCase().replace(/\s+/g, '-')
+    if (!normalized || tags.includes(normalized)) return
+    saveFrontmatter({ ...frontmatter, tags: [...tags, normalized] })
+    setNewTag('')
+    setAddingTag(false)
   }, [tags, frontmatter, saveFrontmatter])
 
-  const removeTag = useCallback((tag: string) =>
-    saveFrontmatter({ ...frontmatter, tags: tags.filter(t => t !== tag) })
-  , [tags, frontmatter, saveFrontmatter])
+  const removeTag = useCallback((tag: string) => {
+    saveFrontmatter({ ...frontmatter, tags: tags.filter((item) => item !== tag) })
+  }, [tags, frontmatter, saveFrontmatter])
 
   const goToHeading = useCallback((heading: HeadingEntry, headingIndex: number) => {
     if (!tab) return
@@ -108,11 +107,9 @@ export function PropertiesPanel() {
       const target = rawHeadings[headingIndex] ?? fallback
       if (!target) return
 
-      window.dispatchEvent(
-        new CustomEvent(RAW_JUMP_EVENT, {
-          detail: { tabId: tab.id, from: target.from, to: target.to }
-        })
-      )
+      window.dispatchEvent(new CustomEvent(RAW_JUMP_EVENT, {
+        detail: { tabId: tab.id, from: target.from, to: target.to }
+      }))
       return
     }
 
@@ -152,7 +149,9 @@ export function PropertiesPanel() {
         const nextTop = scrollRoot.scrollTop + (coords.top - rootRect.top) - scrollRoot.clientHeight * 0.2
         animateScrollTop(scrollRoot, nextTop)
       })
-    } catch { /* ignore */ }
+    } catch {
+      // ignore
+    }
   }, [activeView, tab])
 
   return (
@@ -161,17 +160,18 @@ export function PropertiesPanel() {
         {tab && docProperties ? (
           <>
             <Section title="Documento">
-              <Row label="Arquivo"    value={tab.title} />
-              <Row label="Formato"    value={tab.ext === 'md' ? 'Markdown' : tab.ext.toUpperCase()} />
-              <Row label="Palavras"   value={String(docProperties.wordCount)} />
+              <Row label="Arquivo" value={tab.title} />
+              <Row label="Formato" value={tab.ext === 'md' ? 'Markdown' : tab.ext.toUpperCase()} />
+              <Row label="Tipo" value="Markdown" />
+              <Row label="Palavras" value={String(docProperties.wordCount)} />
               <Row label="Caracteres" value={String(docProperties.charCount)} />
               {docProperties.mtime && <Row label="Modificado" value={formatDate(docProperties.mtime)} />}
             </Section>
 
             {selectionProperties && (
-              <Section title="Seleção">
+              <Section title="Selecao">
                 <Row label="Palavras" value={String(selectionProperties.wordCount)} />
-                <Row label="Tipo"     value={selectionProperties.nodeType} />
+                <Row label="Tipo" value={selectionProperties.nodeType} />
               </Section>
             )}
 
@@ -194,32 +194,39 @@ export function PropertiesPanel() {
 
             <Section title="Tags">
               <div className="flex flex-wrap gap-1.5 mb-2">
-                {tags.map(tag => (
+                {tags.map((tag) => (
                   <span key={tag} className="flex items-center gap-1 bg-[#094771] text-[#4a9eff] text-[11px] px-2 py-0.5 rounded-full">
                     {tag}
-                    <button onClick={() => removeTag(tag)} className="opacity-60 hover:opacity-100 ml-0.5 leading-none">×</button>
+                    <button onClick={() => removeTag(tag)} className="opacity-60 hover:opacity-100 ml-0.5 leading-none">�</button>
                   </span>
                 ))}
                 {tags.length === 0 && !addingTag && (
                   <span className="text-[#555] text-[12px]">Sem tags</span>
                 )}
               </div>
+
               {addingTag ? (
                 <input
                   autoFocus
                   value={newTag}
-                  onChange={e => setNewTag(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') addTag(newTag)
-                    if (e.key === 'Escape') { setAdding(false); setNewTag('') }
+                  onChange={(event) => setNewTag(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') addTag(newTag)
+                    if (event.key === 'Escape') {
+                      setAddingTag(false)
+                      setNewTag('')
+                    }
                   }}
-                  onBlur={() => { if (newTag.trim()) addTag(newTag); else setAdding(false) }}
+                  onBlur={() => {
+                    if (newTag.trim()) addTag(newTag)
+                    else setAddingTag(false)
+                  }}
                   placeholder="nova-tag"
                   className="w-full bg-[#3c3c3c] text-[#cccccc] text-[12px] px-2 py-1 rounded outline outline-1 outline-[#4a9eff]"
                 />
               ) : (
                 <button
-                  onClick={() => setAdding(true)}
+                  onClick={() => setAddingTag(true)}
                   className="flex items-center gap-1 text-[#555] hover:text-[#4a9eff] text-[12px] transition-colors"
                 >
                   <span className="text-lg leading-none">+</span>

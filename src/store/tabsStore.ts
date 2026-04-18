@@ -1,9 +1,10 @@
 import { create } from 'zustand'
+import { EditorState } from 'prosemirror-state'
 import { Tab, EditorMode, FileExt } from '../shared/types'
 import { generateId } from '../shared/utils'
-import { EditorState } from 'prosemirror-state'
 import { MarkdownConverter } from '../filesystem/converters/MarkdownConverter'
 import { createEditorState } from '../editor/core/EditorInstance'
+import { parseFrontmatter, serializeFrontmatter } from '../shared/utils/frontmatter'
 
 const RECENT_FILES_KEY = 'notechaps_recent_files'
 const MAX_RECENT = 12
@@ -26,7 +27,9 @@ function loadRecentFiles(): RecentFile[] {
 function saveRecentFiles(files: RecentFile[]) {
   try {
     localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(files))
-  } catch { /* ignore */ }
+  } catch {
+    // ignore local storage errors
+  }
 }
 
 interface TabsState {
@@ -60,7 +63,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     const isUntitled = filePath.startsWith('untitled:') || filePath === 'untitled.md'
 
     if (!isUntitled) {
-      const existing = get().tabs.find(t => t.filePath === filePath)
+      const existing = get().tabs.find((tab) => tab.filePath === filePath)
       if (existing) {
         set({ activeTabId: existing.id })
         return existing.id
@@ -82,25 +85,25 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       autoSave: false
     }
 
-    // Persist to recent files (non-untitled only)
     if (!isUntitled) {
       const entry: RecentFile = { filePath, title, openedAt: Date.now() }
-      const updated = [entry, ...get().recentFiles.filter(f => f.filePath !== filePath)].slice(0, MAX_RECENT)
+      const updated = [entry, ...get().recentFiles.filter((item) => item.filePath !== filePath)].slice(0, MAX_RECENT)
       saveRecentFiles(updated)
-      set(state => ({ tabs: [...state.tabs, tab], activeTabId: id, recentFiles: updated }))
+      set((state) => ({ tabs: [...state.tabs, tab], activeTabId: id, recentFiles: updated }))
     } else {
-      set(state => ({ tabs: [...state.tabs, tab], activeTabId: id }))
+      set((state) => ({ tabs: [...state.tabs, tab], activeTabId: id }))
     }
+
     return id
   },
 
   closeTab: (id) => {
-    const tab = get().tabs.find(t => t.id === id)
+    const tab = get().tabs.find((item) => item.id === id)
     if (!tab) return
 
-    set(state => {
-      const idx = state.tabs.findIndex(t => t.id === id)
-      const newTabs = state.tabs.filter(t => t.id !== id)
+    set((state) => {
+      const idx = state.tabs.findIndex((item) => item.id === id)
+      const newTabs = state.tabs.filter((item) => item.id !== id)
       const newClosed = [tab, ...state.recentlyClosed].slice(0, 20)
 
       let newActive = state.activeTabId
@@ -116,92 +119,79 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   setActiveTab: (id) => set({ activeTabId: id }),
 
   markDirty: (id, dirty) => {
-    set(state => ({
-      tabs: state.tabs.map(t => t.id === id ? { ...t, isDirty: dirty } : t)
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, isDirty: dirty } : tab))
     }))
   },
 
   updateEditorState: (id, editorState) => {
-    set(state => ({
-      tabs: state.tabs.map(t => t.id === id ? { ...t, editorState } : t)
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, editorState } : tab))
     }))
   },
 
   updateRawContent: (id, rawContent) => {
-    set(state => ({
-      tabs: state.tabs.map(t => t.id === id ? { ...t, rawContent } : t)
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, rawContent } : tab))
     }))
   },
 
   updateScrollPosition: (id, scrollPosition) => {
-    set(state => ({
-      tabs: state.tabs.map(t => t.id === id ? { ...t, scrollPosition } : t)
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, scrollPosition } : tab))
     }))
   },
 
   setMode: (id, mode) => {
-    set(state => ({
-      tabs: state.tabs.map(t => {
-        if (t.id !== id) return t
+    set((state) => ({
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== id) return tab
 
-        // ── Visual → Raw ────────────────────────────────────────────────
-        // Serializa o doc atual para markdown limpo.
-        if (t.mode === 'visual' && mode === 'raw') {
-          const rawContent = t.editorState
-            ? MarkdownConverter.fromDoc(t.editorState.doc)
-            : t.rawContent
-          // Descarta o editorState cacheado para forçar re-parse ao voltar
-          return { ...t, mode, rawContent, editorState: null }
+        if (tab.mode === 'visual' && mode === 'raw') {
+          const { meta } = parseFrontmatter(tab.rawContent)
+          const body = tab.editorState
+            ? MarkdownConverter.fromDoc(tab.editorState.doc, { lineMode: 'markdown' })
+            : parseFrontmatter(tab.rawContent).body
+          const rawContent = serializeFrontmatter(meta, body)
+          return { ...tab, mode, rawContent, editorState: null }
         }
 
-        // ── Raw → Visual ────────────────────────────────────────────────
-        // SEMPRE recria o editorState a partir do rawContent atual.
-        //
-        // BUG FIX CRÍTICO: Nunca reutiliza editorState cacheado ao entrar
-        // no visual. O rawContent pode ter sido editado manualmente no raw,
-        // e o editorState antigo não reflete essas mudanças.
-        //
-        // Adicionalmente, ao descartar o editorState no Visual→Raw acima,
-        // garantimos que este branch sempre executa o parse limpo.
-        if (t.mode === 'raw' && mode === 'visual') {
-          const doc = t.rawContent
-            ? MarkdownConverter.toDoc(t.rawContent)
-            : undefined
+        if (tab.mode === 'raw' && mode === 'visual') {
+          const { body } = parseFrontmatter(tab.rawContent)
+          const doc = body ? MarkdownConverter.toDoc(body, { preserveSoftBreaks: false }) : undefined
           const editorState = createEditorState(doc)
-          return { ...t, mode, editorState }
+          return { ...tab, mode, editorState }
         }
 
-        return { ...t, mode }
+        return { ...tab, mode }
       })
     }))
   },
 
   updateTabInfo: (id, filePath, title, ext) => {
-    set(state => ({
-      tabs: state.tabs.map(t => t.id === id ? { ...t, filePath, title, ext } : t)
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, filePath, title, ext } : tab))
     }))
   },
 
   toggleTabAutoSave: (id) => {
-    set(state => ({
-      tabs: state.tabs.map(t => t.id === id ? { ...t, autoSave: !t.autoSave } : t)
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, autoSave: !tab.autoSave } : tab))
     }))
   },
 
   getActiveTab: () => {
     const { tabs, activeTabId } = get()
-    return tabs.find(t => t.id === activeTabId) ?? null
+    return tabs.find((tab) => tab.id === activeTabId) ?? null
   },
 
-  getTab: (id) => {
-    return get().tabs.find(t => t.id === id)
-  },
+  getTab: (id) => get().tabs.find((tab) => tab.id === id),
 
   reopenLastClosed: () => {
     const { recentlyClosed } = get()
     if (recentlyClosed.length === 0) return null
     const [last, ...rest] = recentlyClosed
-    set(state => ({
+    set((state) => ({
       tabs: [...state.tabs, last],
       activeTabId: last.id,
       recentlyClosed: rest
