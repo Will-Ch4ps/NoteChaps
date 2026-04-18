@@ -65,7 +65,7 @@ export function RawMode({ tabId, initialContent }: RawModeProps) {
       const lineHeight = parseFloat(window.getComputedStyle(textarea).lineHeight || '') || rawFontSize * 1.6
       const lineNumber = textarea.value.slice(0, from).split('\n').length - 1
       const targetTop = textarea.offsetTop + lineNumber * lineHeight - scrollRoot.clientHeight * 0.35
-      scrollRoot.scrollTo({ top: Math.max(0, targetTop), behavior: 'auto' })
+      scrollRoot.scrollTop = Math.max(0, targetTop)
     }
 
     window.addEventListener(RAW_JUMP_EVENT, onJump as EventListener)

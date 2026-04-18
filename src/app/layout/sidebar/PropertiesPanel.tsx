@@ -113,13 +113,27 @@ export function PropertiesPanel() {
       activeView.focus()
 
       requestAnimationFrame(() => {
+        const scrollRoot = document.querySelector<HTMLElement>('[data-editor-scroll-root="true"]')
+        if (!scrollRoot) return
+
         const dom = activeView.domAtPos(targetPos)
         const baseEl =
           dom.node.nodeType === 1
             ? (dom.node as HTMLElement)
             : (dom.node.parentElement as HTMLElement | null)
         const targetEl = baseEl?.closest('h1,h2,h3,h4,h5,h6') ?? baseEl
-        targetEl?.scrollIntoView({ behavior: 'auto', block: 'center' })
+        if (targetEl) {
+          const targetRect = targetEl.getBoundingClientRect()
+          const rootRect = scrollRoot.getBoundingClientRect()
+          const nextTop = scrollRoot.scrollTop + (targetRect.top - rootRect.top) - scrollRoot.clientHeight * 0.2
+          scrollRoot.scrollTop = Math.max(0, nextTop)
+          return
+        }
+
+        const coords = activeView.coordsAtPos(targetPos)
+        const rootRect = scrollRoot.getBoundingClientRect()
+        const nextTop = scrollRoot.scrollTop + (coords.top - rootRect.top) - scrollRoot.clientHeight * 0.2
+        scrollRoot.scrollTop = Math.max(0, nextTop)
       })
     } catch { /* ignore */ }
   }, [activeView, tab])
